@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { prisma } from '../infrastructure/prisma.js';
 import { joinGame, leaveGame, markPayment, createGame, linkPlayerToOrganizer } from '../application/use-cases.js';
 import { GameStatus } from '../domain/game.js';
@@ -6,26 +6,28 @@ import { RegStatus } from '../domain/registration.js';
 
 describe('Race Conditions Test', () => {
   beforeEach(async () => {
+    // Clean up in correct order to avoid foreign key constraints
     await prisma.registration.deleteMany();
     await prisma.game.deleteMany();
     await prisma.organizer.deleteMany();
     await prisma.user.deleteMany();
-  });
+  }, 10000);
 
   afterEach(async () => {
+    // Clean up in correct order to avoid foreign key constraints
     await prisma.registration.deleteMany();
     await prisma.game.deleteMany();
     await prisma.organizer.deleteMany();
     await prisma.user.deleteMany();
-  });
+  }, 10000);
 
   it('should handle concurrent joinGame calls correctly', async () => {
     // Given: create game with capacity 1
     const user1 = await prisma.user.create({
-      data: { telegramId: 111111111, name: 'User 1' }
+      data: { telegramId: 111111111n, name: 'User 1' }
     });
     const user2 = await prisma.user.create({
-      data: { telegramId: 222222222, name: 'User 2' }
+      data: { telegramId: 222222222n, name: 'User 2' }
     });
     const organizer = await prisma.organizer.create({
       data: { userId: user1.id, title: 'Test Organizer' }
@@ -64,7 +66,7 @@ describe('Race Conditions Test', () => {
 
     expect(dbConfirmedCount).toBe(1);
     expect(dbWaitlistedCount).toBe(1);
-  });
+  }, 10000);
 });
 
 describe('Game Registration Use Cases', () => {
@@ -82,13 +84,13 @@ describe('Game Registration Use Cases', () => {
     await prisma.game.deleteMany();
     await prisma.organizer.deleteMany();
     await prisma.user.deleteMany();
-  });
+  }, 10000);
 
   describe('joinGame', () => {
     it('should allow joining an open game with available capacity', async () => {
       // Given: create user and game
       const user = await prisma.user.create({
-        data: { telegramId: 123456789, name: 'Test User' }
+        data: { telegramId: 123456789n, name: 'Test User' }
       });
       const organizer = await prisma.organizer.create({
         data: { userId: user.id, title: 'Test Organizer' }
@@ -113,15 +115,15 @@ describe('Game Registration Use Cases', () => {
         where: { gameId: game.id, userId: user.id }
       });
       expect(registration?.status).toBe(RegStatus.confirmed);
-    });
+    }, 10000);
 
     it('should put user in waitlist when capacity is reached', async () => {
       // Given: create game with capacity 1 and one existing registration
       const user1 = await prisma.user.create({
-        data: { telegramId: 123456789, name: 'User 1' }
+        data: { telegramId: 123456789n, name: 'User 1' }
       });
       const user2 = await prisma.user.create({
-        data: { telegramId: 987654321, name: 'User 2' }
+        data: { telegramId: 987654321n, name: 'User 2' }
       });
       const organizer = await prisma.organizer.create({
         data: { userId: user1.id, title: 'Test Organizer' }
@@ -149,12 +151,12 @@ describe('Game Registration Use Cases', () => {
         where: { gameId: game.id, userId: user2.id }
       });
       expect(registration?.status).toBe(RegStatus.waitlisted);
-    });
+    }, 10000);
 
     it('should reject joining a game that already started', async () => {
       // Given: create game that already started
       const user = await prisma.user.create({
-        data: { telegramId: 123456789, name: 'Test User' }
+        data: { telegramId: 123456789n, name: 'Test User' }
       });
       const organizer = await prisma.organizer.create({
         data: { userId: user.id, title: 'Test Organizer' }
@@ -170,20 +172,18 @@ describe('Game Registration Use Cases', () => {
       });
 
       // When & Then: should throw error
-      expect(async () => {
-        await joinGame(game.id, user.id);
-      }).toThrow('Игра уже началась');
-    });
+      await expect(joinGame(game.id, user.id)).rejects.toThrow('Игра уже началась');
+    }, 10000);
   });
 
   describe('leaveGame', () => {
     it('should allow leaving a game and promote waitlisted user', async () => {
       // Given: game with confirmed user and waitlisted user
       const user1 = await prisma.user.create({
-        data: { telegramId: 123456789, name: 'User 1' }
+        data: { telegramId: 123456789n, name: 'User 1' }
       });
       const user2 = await prisma.user.create({
-        data: { telegramId: 987654321, name: 'User 2' }
+        data: { telegramId: 987654321n, name: 'User 2' }
       });
       const organizer = await prisma.organizer.create({
         data: { userId: user1.id, title: 'Test Organizer' }
@@ -209,14 +209,14 @@ describe('Game Registration Use Cases', () => {
         where: { gameId: game.id, userId: user2.id }
       });
       expect(promotedReg?.status).toBe(RegStatus.confirmed);
-    });
+    }, 10000);
   });
 
   describe('markPayment', () => {
     it('should allow marking payment after game starts', async () => {
       // Given: game that already started with confirmed registration
       const user = await prisma.user.create({
-        data: { telegramId: 123456789, name: 'Test User' }
+        data: { telegramId: 123456789n, name: 'Test User' }
       });
       const organizer = await prisma.organizer.create({
         data: { userId: user.id, title: 'Test Organizer' }
@@ -248,12 +248,12 @@ describe('Game Registration Use Cases', () => {
       });
       expect(registration?.paymentStatus).toBe('paid');
       expect(registration?.paymentMarkedAt).toBeDefined();
-    });
+    }, 10000);
 
     it('should reject payment marking before game starts', async () => {
       // Given: game that hasn't started yet
       const user = await prisma.user.create({
-        data: { telegramId: 123456789, name: 'Test User' }
+        data: { telegramId: 123456789n, name: 'Test User' }
       });
       const organizer = await prisma.organizer.create({
         data: { userId: user.id, title: 'Test Organizer' }
@@ -271,17 +271,15 @@ describe('Game Registration Use Cases', () => {
       await joinGame(game.id, user.id);
 
       // When & Then: should throw error
-      expect(async () => {
-        await markPayment(game.id, user.id);
-      }).toThrow('Окно оплаты еще не открыто');
-    });
+      await expect(markPayment(game.id, user.id)).rejects.toThrow('Окно оплаты еще не открыто');
+    }, 10000);
   });
 
   describe('createGame', () => {
     it('should create a new game successfully', async () => {
       // Given: organizer
       const user = await prisma.user.create({
-        data: { telegramId: 123456789, name: 'Test User' }
+        data: { telegramId: 123456789n, name: 'Test User' }
       });
       const organizer = await prisma.organizer.create({
         data: { userId: user.id, title: 'Test Organizer' }
@@ -306,16 +304,16 @@ describe('Game Registration Use Cases', () => {
       expect(game.levelTag).toBe('intermediate');
       expect(game.priceText).toBe('500 руб');
       expect(game.status).toBe(GameStatus.open);
-    });
+    }, 10000);
   });
   describe('linkPlayerToOrganizer', () => {
     it('should successfully link player to organizer', async () => {
       // Given: player and organizer
       const player = await prisma.user.create({
-        data: { telegramId: 123456789, name: 'Player User' }
+        data: { telegramId: 123456789n, name: 'Player User' }
       });
       const organizerUser = await prisma.user.create({
-        data: { telegramId: 987654321, name: 'Organizer User' }
+        data: { telegramId: 987654321n, name: 'Organizer User' }
       });
       const organizer = await prisma.organizer.create({
         data: { userId: organizerUser.id, title: 'Test Organizer' }
@@ -326,29 +324,25 @@ describe('Game Registration Use Cases', () => {
 
       // Then: should succeed
       expect(result.ok).toBe(true);
-    });
+    }, 10000);
 
     it('should throw error for non-existent player', async () => {
       // Given: non-existent player ID
       const fakePlayerId = 'fake-player-id';
 
       // When & Then: should throw error
-      expect(async () => {
-        await linkPlayerToOrganizer(fakePlayerId, 'some-organizer-id');
-      }).toThrow('Игрок не найден');
-    });
+      await expect(linkPlayerToOrganizer(fakePlayerId, 'some-organizer-id')).rejects.toThrow('Игрок не найден');
+    }, 10000);
 
     it('should throw error for non-existent organizer', async () => {
       // Given: existing player but non-existent organizer
       const player = await prisma.user.create({
-        data: { telegramId: 123456789, name: 'Player User' }
+        data: { telegramId: 123456789n, name: 'Player User' }
       });
       const fakeOrganizerId = 'fake-organizer-id';
 
       // When & Then: should throw error
-      expect(async () => {
-        await linkPlayerToOrganizer(player.id, fakeOrganizerId);
-      }).toThrow('Организатор не найден');
-    });
+      await expect(linkPlayerToOrganizer(player.id, fakeOrganizerId)).rejects.toThrow('Организатор не найден');
+    }, 10000);
   });
 });

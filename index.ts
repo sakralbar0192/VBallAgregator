@@ -1,10 +1,25 @@
 import 'dotenv/config';
 import { bot } from './src/bot.js';
+import { initializeWorkers, closeQueues } from './src/shared/scheduler.js';
 
-bot.launch();
+async function startApp() {
+  // Инициализируем воркеры для обработки задач
+  initializeWorkers();
 
-console.log('Bot started!');
+  // Запускаем бота
+  bot.launch();
+  console.log('Bot started!');
+}
 
 // Graceful shutdown
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+async function shutdown() {
+  console.log('Shutting down...');
+  await closeQueues();
+  bot.stop('SIGINT');
+  process.exit(0);
+}
+
+process.once('SIGINT', shutdown);
+process.once('SIGTERM', shutdown);
+
+startApp().catch(console.error);

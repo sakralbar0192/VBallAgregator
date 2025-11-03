@@ -1,28 +1,29 @@
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { prisma } from '../infrastructure/prisma.js';
 import { registerUser, registerOrganizer, createGame, joinGame, markPayment } from '../application/use-cases.js';
 import { GameStatus } from '../domain/game.js';
+import { RegStatus } from '../domain/registration.js';
 
 describe('Integration Tests - Full User Journey', () => {
   beforeEach(async () => {
-    // Clean up database
+    // Clean up database in correct order to avoid foreign key constraints
     await prisma.registration.deleteMany();
     await prisma.game.deleteMany();
     await prisma.organizer.deleteMany();
     await prisma.user.deleteMany();
-  });
+  }, 10000);
 
   afterEach(async () => {
-    // Clean up after each test
+    // Clean up after each test in correct order to avoid foreign key constraints
     await prisma.registration.deleteMany();
     await prisma.game.deleteMany();
     await prisma.organizer.deleteMany();
     await prisma.user.deleteMany();
-  });
+  }, 10000);
 
   it('should complete full registration and game participation flow', async () => {
     // Step 1: Register organizer
-    const organizerResult = await registerUser(123456789, 'John Organizer');
+    const organizerResult = await registerUser(123456789n, 'John Organizer');
     expect(organizerResult.userId).toBeDefined();
 
     const organizer = await registerOrganizer(organizerResult.userId, 'Beach Volleyball Club');
@@ -35,7 +36,7 @@ describe('Integration Tests - Full User Journey', () => {
     expect(organizerRecord).toBeDefined();
 
     // Step 2: Register player
-    const playerResult = await registerUser(987654321, 'Jane Player');
+    const playerResult = await registerUser(987654321n, 'Jane Player');
     expect(playerResult.userId).toBeDefined();
 
     // Step 3: Organizer creates game
@@ -54,7 +55,7 @@ describe('Integration Tests - Full User Journey', () => {
 
     // Step 4: Player joins game
     const joinResult = await joinGame(game.id, playerResult.userId);
-    expect(joinResult.status).toBe('confirmed');
+    expect(joinResult.status).toBe(RegStatus.confirmed);
 
     // Step 5: Verify registration in database
     const registration = await prisma.registration.findFirst({
@@ -84,7 +85,7 @@ describe('Integration Tests - Full User Journey', () => {
 
   it('should handle waitlist promotion when confirmed player leaves', async () => {
     // Step 1: Setup organizer and players
-    const organizerResult = await registerUser(111111111, 'Organizer');
+    const organizerResult = await registerUser(111111111n, 'Organizer');
     const organizerReg = await registerOrganizer(organizerResult.userId, 'Club');
     expect(organizerReg.ok).toBe(true);
 
@@ -93,8 +94,8 @@ describe('Integration Tests - Full User Journey', () => {
     });
     expect(organizerRecord).toBeDefined();
 
-    const player1Result = await registerUser(222222222, 'Player 1');
-    const player2Result = await registerUser(333333333, 'Player 2');
+    const player1Result = await registerUser(222222222n, 'Player 1');
+    const player2Result = await registerUser(333333333n, 'Player 2');
 
     // Step 2: Create game with capacity 1
     const game = await createGame({
@@ -110,7 +111,7 @@ describe('Integration Tests - Full User Journey', () => {
 
     // Step 4: Second player joins (waitlisted)
     const joinResult2 = await joinGame(game.id, player2Result.userId);
-    expect(joinResult2.status).toBe('waitlisted');
+    expect(joinResult2.status).toBe(RegStatus.waitlisted);
 
     // Step 5: First player leaves, second should be promoted
     const { leaveGame } = await import('../application/use-cases.js');
@@ -125,7 +126,7 @@ describe('Integration Tests - Full User Journey', () => {
 
   it('should prevent payment marking before game starts', async () => {
     // Step 1: Setup
-    const organizerResult = await registerUser(444444444, 'Organizer');
+    const organizerResult = await registerUser(444444444n, 'Organizer');
     const organizerReg = await registerOrganizer(organizerResult.userId, 'Club');
     expect(organizerReg.ok).toBe(true);
 
@@ -134,7 +135,7 @@ describe('Integration Tests - Full User Journey', () => {
     });
     expect(organizerRecord).toBeDefined();
 
-    const playerResult = await registerUser(555555555, 'Player');
+    const playerResult = await registerUser(555555555n, 'Player');
 
     const game = await createGame({
       organizerId: organizerRecord!.id,
@@ -147,8 +148,6 @@ describe('Integration Tests - Full User Journey', () => {
 
     // Step 2: Try to mark payment before game starts
     const { markPayment } = await import('../application/use-cases.js');
-    expect(async () => {
-      await markPayment(game.id, playerResult.userId);
-    }).toThrow('Окно оплаты еще не открыто');
+    await expect(markPayment(game.id, playerResult.userId)).rejects.toThrow('Окно оплаты еще не открыто');
   });
 });

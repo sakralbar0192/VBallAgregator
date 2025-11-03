@@ -12,7 +12,11 @@
     "prisma:studio": "export $(cat .env | xargs) && DATABASE_URL=\"$DATABASE_URL\" npx prisma studio",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
-    "test": "bun test",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest",
+    "test:unit": "NODE_OPTIONS=--experimental-vm-modules jest src/tests/use-cases.test.ts",
+    "test:integration": "NODE_OPTIONS=--experimental-vm-modules jest src/tests/integration.test.ts",
+    "test:ci": "SKIP_INTEGRATION_TESTS=true NODE_OPTIONS=--experimental-vm-modules jest",
+    "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch",
     "lint": "echo 'Linting not configured yet'"
   },
   "dependencies": {
@@ -20,6 +24,8 @@
     "@prisma/client": "^6.18.0",
     "@types/node": "^24.9.2",
     "@types/uuid": "^11.0.0",
+    "bullmq": "^5.63.0",
+    "date-fns": "^4.1.0",
     "dotenv": "^17.2.3",
     "fastify": "^5.6.1",
     "nodemon": "^3.1.10",
@@ -28,5 +34,10 @@
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
     "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "jest": "^30.2.0",
+    "ts-jest": "^29.4.5"
   }
 }

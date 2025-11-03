@@ -7,6 +7,13 @@
   import { logger } from '../shared/logger.js';
   import { DomainError } from '../domain/errors.js';
   import { prisma } from '../infrastructure/prisma.js';
+  import { addHours } from 'date-fns';
+  import {
+    scheduleGameReminder24h,
+    scheduleGameReminder2h,
+    schedulePaymentReminder12h,
+    schedulePaymentReminder24h
+  } from '../shared/scheduler.js';
 
   const gameRepo: GameRepo = new PrismaGameRepo();
   const registrationRepo: RegistrationRepo = new PrismaRegistrationRepo();
@@ -129,7 +136,54 @@
     logger.info('Payment marked', { gameId, userId });
     await eventPublisher.publish(evt('PaymentMarked', { gameId, userId }));
 
+    // Запланировать напоминания об оплате после игры
+    await schedulePaymentReminders(gameId);
+
     return { ok: true };
+  }
+
+  /**
+   * Планирует напоминания для игры.
+   * @param {string} gameId - Идентификатор игры.
+   * @returns {Promise<void>} - Успех операции.
+   */
+  export async function scheduleGameReminders(gameId: string) {
+    if (!gameId?.trim()) {
+      throw new DomainError('INVALID_INPUT', 'gameId не может быть пустым');
+    }
+
+    logger.info('scheduleGameReminders called', { gameId });
+
+    const game = await gameRepo.findById(gameId);
+    if (!game) throw new DomainError('NOT_FOUND', 'Игра не найдена');
+
+    // Планируем реальные напоминания через BullMQ
+    await scheduleGameReminder24h(gameId, game.startsAt);
+    await scheduleGameReminder2h(gameId, game.startsAt);
+
+    logger.info('Game reminders scheduled', { gameId });
+  }
+
+  /**
+   * Планирует напоминания об оплате после игры.
+   * @param {string} gameId - Идентификатор игры.
+   * @returns {Promise<void>} - Успех операции.
+   */
+  export async function schedulePaymentReminders(gameId: string) {
+    if (!gameId?.trim()) {
+      throw new DomainError('INVALID_INPUT', 'gameId не может быть пустым');
+    }
+
+    logger.info('schedulePaymentReminders called', { gameId });
+
+    const game = await gameRepo.findById(gameId);
+    if (!game) throw new DomainError('NOT_FOUND', 'Игра не найдена');
+
+    // Планируем реальные напоминания через BullMQ
+    await schedulePaymentReminder12h(gameId, game.startsAt);
+    await schedulePaymentReminder24h(gameId, game.startsAt);
+
+    logger.info('Payment reminders scheduled', { gameId });
   }
 
   /**
@@ -176,16 +230,20 @@
       levelTag: g.levelTag,
       priceText: g.priceText
     }));
+
+    // Запланировать напоминания для игры
+    await scheduleGameReminders(g.id);
+
     return g;
   }
 
   /**
    * Регистрирует пользователя.
-   * @param {number} telegramId - Telegram ID пользователя.
+   * @param {number | bigint} telegramId - Telegram ID пользователя.
    * @param {string} name - Имя пользователя.
    * @returns {Promise<{ userId: string }>} - ID созданного пользователя.
    */
-  export async function registerUser(telegramId: number, name: string) {
+  export async function registerUser(telegramId: number | bigint, name: string) {
     if (telegramId <= 0) {
       throw new DomainError('INVALID_INPUT', 'telegramId должен быть положительным числом');
     }

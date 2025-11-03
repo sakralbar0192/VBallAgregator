@@ -62,3 +62,32 @@ export interface PaymentMarked extends DomainEvent {
     userId: string;
   };
 }
+
+// События напоминаний
+export interface GameReminder24h extends DomainEvent {
+  type: 'GameReminder24h';
+  payload: {
+    gameId: string;
+  };
+}
+
+export interface GameReminder2h extends DomainEvent {
+  type: 'GameReminder2h';
+  payload: {
+    gameId: string;
+  };
+}
+
+export interface PaymentReminder12h extends DomainEvent {
+  type: 'PaymentReminder12h';
+  payload: {
+    gameId: string;
+  };
+}
+
+export interface PaymentReminder24h extends DomainEvent {
+  type: 'PaymentReminder24h';
+  payload: {
+    gameId: string;
+  };
+}

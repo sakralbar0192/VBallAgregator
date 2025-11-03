@@ -12,7 +12,8 @@
     "prisma:studio": "export $(cat .env | xargs) && DATABASE_URL=\"$DATABASE_URL\" npx prisma studio",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "bun test",
+    "lint": "echo 'Linting not configured yet'"
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",

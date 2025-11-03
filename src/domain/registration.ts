@@ -17,11 +17,15 @@ export class Registration {
     readonly id: string,
     readonly gameId: string,
     readonly userId: string,
-    public status: RegStatus,
+    private _status: RegStatus,
     public paymentStatus: PaymentStatus = PaymentStatus.unpaid,
     public paymentMarkedAt?: Date,
     readonly createdAt: Date = new Date(),
   ) {}
+
+  get status(): RegStatus {
+    return this._status;
+  }
 
   markPaid(game: Game) {
     if (!game.isPaymentWindowOpen) throw new DomainError(ERROR_CODES.PAYMENT_WINDOW_NOT_OPEN, 'Окно оплаты еще не открыто');
@@ -30,5 +34,5 @@ export class Registration {
     this.paymentMarkedAt = new Date();
   }
 
-  cancel() { this.status = RegStatus.canceled; }
+  cancel() { this._status = RegStatus.canceled; }
 }

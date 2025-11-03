@@ -1,6 +1,6 @@
 import { prisma } from './prisma.js';
 import { Game, GameStatus } from '../domain/game.js';
-import { Registration, RegStatus } from '../domain/registration.js';
+import { Registration, RegStatus, PaymentStatus } from '../domain/registration.js';
 
 export interface GameRepo {
   findById(id: string): Promise<Game | null>;
@@ -28,7 +28,7 @@ export class PrismaGameRepo implements GameRepo {
       game.capacity,
       game.levelTag || undefined,
       game.priceText || undefined,
-      game.status
+      game.status as GameStatus
     );
   }
 
@@ -48,7 +48,7 @@ export class PrismaGameRepo implements GameRepo {
         capacity: g.capacity,
         levelTag: g.levelTag,
         priceText: g.priceText,
-        status: g.status
+        status: g.status as GameStatus
       }
     });
   }
@@ -71,8 +71,8 @@ export class PrismaRegistrationRepo implements RegistrationRepo {
       reg.id,
       reg.gameId,
       reg.userId,
-      reg.status,
-      reg.paymentStatus,
+      reg.status as RegStatus,
+      reg.paymentStatus as PaymentStatus,
       reg.paymentMarkedAt || undefined,
       reg.createdAt
     );
@@ -82,7 +82,7 @@ export class PrismaRegistrationRepo implements RegistrationRepo {
     await prisma.registration.upsert({
       where: { gameId_userId: { gameId: reg.gameId, userId: reg.userId } },
       update: {
-        status: reg.status,
+        status: reg.status as RegStatus,
         paymentStatus: reg.paymentStatus,
         paymentMarkedAt: reg.paymentMarkedAt
       },
@@ -90,7 +90,7 @@ export class PrismaRegistrationRepo implements RegistrationRepo {
         id: reg.id,
         gameId: reg.gameId,
         userId: reg.userId,
-        status: reg.status,
+        status: reg.status as RegStatus,
         paymentStatus: reg.paymentStatus,
         paymentMarkedAt: reg.paymentMarkedAt,
         createdAt: reg.createdAt
@@ -108,8 +108,8 @@ export class PrismaRegistrationRepo implements RegistrationRepo {
       reg.id,
       reg.gameId,
       reg.userId,
-      reg.status,
-      reg.paymentStatus,
+      reg.status as RegStatus,
+      reg.paymentStatus as PaymentStatus,
       reg.paymentMarkedAt || undefined,
       reg.createdAt
     );

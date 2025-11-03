@@ -18,8 +18,12 @@ export class Game {
     public capacity: number, // Максимальное количество участников
     public levelTag?: string, // Уровень игры (новичок/любитель/профи)
     public priceText?: string, // Стоимость участия
-    public status: GameStatus = GameStatus.open, // Текущий статус
+    private _status: GameStatus = GameStatus.open, // Текущий статус
   ) {}
+
+  get status(): GameStatus {
+    return this._status;
+  }
 
   // Проверяет, открыто ли окно оплаты (после начала игры)
   get isPaymentWindowOpen(): boolean {
@@ -34,7 +38,7 @@ export class Game {
   }
 
   // Методы изменения статуса игры
-  close() { this.status = GameStatus.closed; }
-  finish() { this.status = GameStatus.finished; }
-  cancel() { this.status = GameStatus.canceled; }
+  close() { this._status = GameStatus.closed; }
+  finish() { this._status = GameStatus.finished; }
+  cancel() { this._status = GameStatus.canceled; }
 }

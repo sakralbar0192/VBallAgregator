@@ -1,0 +1,89 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum GameStatus {
+  open
+  closed
+  finished
+  canceled
+}
+
+enum RegStatus {
+  confirmed
+  waitlisted
+  canceled
+}
+
+enum PaymentStatus {
+  unpaid
+  paid
+}
+
+model User {
+  id          String   @id @default(uuid())
+  telegramId  BigInt   @unique
+  name        String
+  levelTag    String?
+  createdAt   DateTime @default(now())
+
+  // Relations
+  registrations Registration[]
+  organizer     Organizer?
+
+  @@map("users")
+}
+
+model Organizer {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  title       String?
+  description String?
+
+  // Relations
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  games       Game[]
+
+  @@map("organizers")
+}
+
+model Game {
+  id          String     @id @default(uuid())
+  organizerId String
+  venueId     String     // Пока просто string, позже можно сделать модель Venue
+  startsAt    DateTime
+  capacity    Int
+  levelTag    String?
+  priceText   String?
+  status      GameStatus @default(open)
+  createdAt   DateTime   @default(now())
+
+  // Relations
+  organizer     Organizer     @relation(fields: [organizerId], references: [id])
+  registrations Registration[]
+
+  @@map("games")
+}
+
+model Registration {
+  id            String        @id @default(uuid())
+  gameId        String
+  userId        String
+  status        RegStatus
+  paymentStatus PaymentStatus @default(unpaid)
+  paymentMarkedAt DateTime?
+  createdAt     DateTime      @default(now())
+
+  // Relations
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([gameId, userId])
+  @@index([gameId, status, createdAt])
+  @@map("registrations")
+}

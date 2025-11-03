@@ -8,15 +8,25 @@
   import { DomainError } from '../domain/errors.js';
   import { prisma } from '../infrastructure/prisma.js';
   import { addHours } from 'date-fns';
-  import {
-    scheduleGameReminder24h,
-    scheduleGameReminder2h,
-    schedulePaymentReminder12h,
-    schedulePaymentReminder24h
-  } from '../shared/scheduler.js';
+  import { GameApplicationService, MarkPaymentCommand, JoinGameCommand } from './services/game-service.js';
+  import { EventBus } from '../shared/event-bus.js';
+  import { GameDomainService } from '../domain/services/game-domain-service.js';
+  import { SchedulerService } from '../shared/scheduler-service.js';
 
   const gameRepo: GameRepo = new PrismaGameRepo();
   const registrationRepo: RegistrationRepo = new PrismaRegistrationRepo();
+
+  // Initialize new services
+  const eventBus = new EventBus();
+  const gameDomainService = new GameDomainService(gameRepo, registrationRepo);
+  const schedulerService = new SchedulerService(eventBus);
+  const gameApplicationService = new GameApplicationService(
+    gameRepo,
+    registrationRepo,
+    eventBus,
+    gameDomainService,
+    schedulerService
+  );
 
   /**
    * Позволяет пользователю присоединиться к игре.
@@ -35,39 +45,8 @@
 
     logger.info('joinGame called', { gameId, userId });
 
-    return prisma.$transaction(async (tx: any) => {
-      // Advisory lock для предотвращения race conditions
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${gameId}))`;
-
-      const game = await gameRepo.findById(gameId);
-      if (!game) throw new DomainError('NOT_FOUND', 'Игра не найдена');
-
-      const confirmedCount = await gameRepo.countConfirmed(gameId);
-      const existing = await registrationRepo.get(gameId, userId);
-
-      // Если уже зарегистрирован, вернуть текущий статус
-      if (existing) {
-        logger.info('User already registered', { gameId, userId, status: existing.status });
-        return { status: existing.status };
-      }
-
-      // Определить статус на основе текущего количества подтвержденных
-      const status = confirmedCount < game.capacity ? RegStatus.confirmed : RegStatus.waitlisted;
-
-      // Проверить правила игры - только если пытается присоединиться как подтвержденный
-      if (status === RegStatus.confirmed) {
-        game.ensureCanJoin(confirmedCount);
-      }
-
-      // Создать новую регистрацию
-      const reg = new Registration(uuid(), gameId, userId, status);
-      await registrationRepo.upsert(reg);
-
-      logger.info('User joined game', { gameId, userId, status });
-      await eventPublisher.publish(evt('PlayerJoined', { gameId, userId, status }));
-
-      return { status };
-    });
+    // Use new Application Service
+    return await gameApplicationService.joinGame({ gameId, userId });
   }
 
   /**
@@ -125,19 +104,8 @@
 
     logger.info('markPayment called', { gameId, userId });
 
-    const game = await gameRepo.findById(gameId);
-    if (!game) throw new DomainError('NOT_FOUND', 'Игра не найдена');
-
-    const reg = await registrationRepo.get(gameId, userId);
-    if (!reg || reg.status !== RegStatus.confirmed) throw new DomainError('NOT_CONFIRMED', 'Только подтвержденные участники могут отмечать оплату');
-
-    reg.markPaid(game);
-    await registrationRepo.upsert(reg);
-    logger.info('Payment marked', { gameId, userId });
-    await eventPublisher.publish(evt('PaymentMarked', { gameId, userId }));
-
-    // Запланировать напоминания об оплате после игры
-    await schedulePaymentReminders(gameId);
+    // Use new Application Service
+    await gameApplicationService.markPayment({ gameId, userId });
 
     return { ok: true };
   }
@@ -157,9 +125,9 @@
     const game = await gameRepo.findById(gameId);
     if (!game) throw new DomainError('NOT_FOUND', 'Игра не найдена');
 
-    // Планируем реальные напоминания через BullMQ
-    await scheduleGameReminder24h(gameId, game.startsAt);
-    await scheduleGameReminder2h(gameId, game.startsAt);
+    // Use new SchedulerService
+    await schedulerService.scheduleGameReminder24h(gameId, game.startsAt);
+    await schedulerService.initializeWorkers(); // Ensure workers are running
 
     logger.info('Game reminders scheduled', { gameId });
   }
@@ -179,9 +147,8 @@
     const game = await gameRepo.findById(gameId);
     if (!game) throw new DomainError('NOT_FOUND', 'Игра не найдена');
 
-    // Планируем реальные напоминания через BullMQ
-    await schedulePaymentReminder12h(gameId, game.startsAt);
-    await schedulePaymentReminder24h(gameId, game.startsAt);
+    // Use new SchedulerService
+    await schedulerService.schedulePaymentReminder12h(gameId, game.startsAt);
 
     logger.info('Payment reminders scheduled', { gameId });
   }
@@ -220,21 +187,8 @@
 
     logger.info('createGame called', { organizerId: data.organizerId, venueId: data.venueId, capacity: data.capacity });
 
-    const g = new Game(uuid(), data.organizerId, data.venueId, data.startsAt, data.capacity, data.levelTag, data.priceText);
-    await gameRepo.insertGame(g);
-    logger.info('Game created', { gameId: g.id });
-    await eventPublisher.publish(evt('GameCreated', {
-      gameId: g.id,
-      startsAt: g.startsAt.toISOString(),
-      capacity: g.capacity,
-      levelTag: g.levelTag,
-      priceText: g.priceText
-    }));
-
-    // Запланировать напоминания для игры
-    await scheduleGameReminders(g.id);
-
-    return g;
+    // Use new Application Service
+    return await gameApplicationService.createGame(data);
   }
 
   /**
@@ -253,13 +207,8 @@
 
     logger.info('registerUser called', { telegramId, name });
 
-    const user = await prisma.user.upsert({
-      where: { telegramId },
-      update: { name },
-      create: { telegramId, name }
-    });
-    logger.info('User registered', { userId: user.id, telegramId });
-    return { userId: user.id };
+    // Use new Application Service
+    return await gameApplicationService.registerUser({ telegramId, name });
   }
 
   /**
@@ -275,12 +224,8 @@
 
     logger.info('updateUserLevel called', { userId, levelTag });
 
-    await prisma.user.update({
-      where: { id: userId },
-      data: { levelTag }
-    });
-    logger.info('User level updated', { userId, levelTag });
-    return { ok: true };
+    // Use new Application Service
+    return await gameApplicationService.updateUserLevel({ userId, levelTag });
   }
 
   /**
@@ -299,13 +244,8 @@
 
     logger.info('registerOrganizer called', { userId, title });
 
-    await prisma.organizer.upsert({
-      where: { userId },
-      update: {},
-      create: { userId, title }
-    });
-    logger.info('Organizer registered', { userId, title });
-    return { ok: true };
+    // Use new Application Service
+    return await gameApplicationService.registerOrganizer({ userId, title });
   }
 
   /**

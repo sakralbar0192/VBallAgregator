@@ -6,6 +6,16 @@ import { prisma } from './infrastructure/prisma.js';
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN!);
 
+// Rate limiting: 2 messages per 1 second per user
+const rateLimit = require('telegraf-ratelimit');
+const limitConfig = {
+  in: 2,        // 2 сообщения
+  out: 1,       // за 1 секунду
+  unique: true  // per user
+};
+
+bot.use(rateLimit(limitConfig));
+
 export { bot };
 
 bot.start(async (ctx) => {

@@ -1,0 +1,53 @@
+import { GameRepo, RegistrationRepo } from '../../infrastructure/repositories.js';
+import { DomainError } from '../errors.js';
+import { RegStatus } from '../registration.js';
+import { v4 as uuid } from 'uuid';
+import { Registration } from '../registration.js';
+
+export class GameDomainService {
+  constructor(
+    private gameRepo: GameRepo,
+    private registrationRepo: RegistrationRepo
+  ) {}
+
+  async validatePaymentMarking(gameId: string, userId: string) {
+    const game = await this.gameRepo.findById(gameId);
+    if (!game) throw new DomainError('NOT_FOUND', 'Игра не найдена');
+
+    // Check if payment window is open
+    if (!game.isPaymentWindowOpen) {
+      throw new DomainError('PAYMENT_WINDOW_CLOSED', 'Окно оплаты еще не открыто');
+    }
+
+    const registration = await this.registrationRepo.get(gameId, userId);
+    if (!registration || registration.status !== RegStatus.confirmed) {
+      throw new DomainError('NOT_CONFIRMED', 'Только подтвержденные участники могут отмечать оплату');
+    }
+
+    return { game, registration };
+  }
+
+  async processJoinGame(gameId: string, userId: string) {
+    // Advisory lock уже в repo.transaction
+    const game = await this.gameRepo.findById(gameId);
+    if (!game) throw new DomainError('NOT_FOUND', 'Игра не найдена');
+
+    const confirmedCount = await this.gameRepo.countConfirmed(gameId);
+    const existing = await this.registrationRepo.get(gameId, userId);
+
+    if (existing) {
+      return { status: existing.status };
+    }
+
+    const status = confirmedCount < game.capacity ? RegStatus.confirmed : RegStatus.waitlisted;
+
+    if (status === RegStatus.confirmed) {
+      game.ensureCanJoin(confirmedCount);
+    }
+
+    const registration = new Registration(uuid(), gameId, userId, status);
+    await this.registrationRepo.upsert(registration);
+
+    return { status };
+  }
+}

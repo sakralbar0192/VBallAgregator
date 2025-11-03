@@ -30,10 +30,13 @@
     "fastify": "^5.6.1",
     "nodemon": "^3.1.10",
     "prisma": "^6.18.0",
+    "redis": "^5.9.0",
     "telegraf": "^4.16.3",
+    "telegraf-ratelimit": "^2.0.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.0",
+    "zod": "^4.1.12"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

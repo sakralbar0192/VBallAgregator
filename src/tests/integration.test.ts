@@ -3,23 +3,16 @@ import { prisma } from '../infrastructure/prisma.js';
 import { registerUser, registerOrganizer, createGame, joinGame, markPayment } from '../application/use-cases.js';
 import { GameStatus } from '../domain/game.js';
 import { RegStatus } from '../domain/registration.js';
+import { clearDatabase } from './setup.js';
 
 describe('Integration Tests - Full User Journey', () => {
-  beforeEach(async () => {
-    // Clean up database in correct order to avoid foreign key constraints
-    await prisma.registration.deleteMany();
-    await prisma.game.deleteMany();
-    await prisma.organizer.deleteMany();
-    await prisma.user.deleteMany();
-  }, 10000);
+   beforeEach(async () => {
+     await clearDatabase();
+   }, 10000);
 
-  afterEach(async () => {
-    // Clean up after each test in correct order to avoid foreign key constraints
-    await prisma.registration.deleteMany();
-    await prisma.game.deleteMany();
-    await prisma.organizer.deleteMany();
-    await prisma.user.deleteMany();
-  }, 10000);
+   afterEach(async () => {
+     await clearDatabase();
+   }, 10000);
 
   it('should complete full registration and game participation flow', async () => {
     // Step 1: Register organizer
@@ -41,7 +34,7 @@ describe('Integration Tests - Full User Journey', () => {
 
     // Step 3: Organizer creates game
     const gameData = {
-      organizerId: organizerRecord!.id,
+      organizerId: organizerResult.userId, // Use userId, not organizer.id
       venueId: 'venue-beach-1',
       startsAt: new Date(Date.now() + 2 * 60 * 60 * 1000), // 2 hours from now
       capacity: 12,
@@ -99,7 +92,7 @@ describe('Integration Tests - Full User Journey', () => {
 
     // Step 2: Create game with capacity 1
     const game = await createGame({
-      organizerId: organizerRecord!.id,
+      organizerId: organizerResult.userId, // Use userId, not organizer.id
       venueId: 'venue-1',
       startsAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
       capacity: 1,
@@ -138,7 +131,7 @@ describe('Integration Tests - Full User Journey', () => {
     const playerResult = await registerUser(555555555n, 'Player');
 
     const game = await createGame({
-      organizerId: organizerRecord!.id,
+      organizerId: organizerResult.userId, // Use userId, not organizer.id
       venueId: 'venue-1',
       startsAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // Future game
       capacity: 10

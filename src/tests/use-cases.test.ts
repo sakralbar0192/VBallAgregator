@@ -3,23 +3,16 @@ import { prisma } from '../infrastructure/prisma.js';
 import { joinGame, leaveGame, markPayment, createGame, linkPlayerToOrganizer } from '../application/use-cases.js';
 import { GameStatus } from '../domain/game.js';
 import { RegStatus } from '../domain/registration.js';
+import { clearDatabase, createTestOrganizer } from './setup.js';
 
 describe('Race Conditions Test', () => {
-  beforeEach(async () => {
-    // Clean up in correct order to avoid foreign key constraints
-    await prisma.registration.deleteMany();
-    await prisma.game.deleteMany();
-    await prisma.organizer.deleteMany();
-    await prisma.user.deleteMany();
-  }, 10000);
+   beforeEach(async () => {
+     await clearDatabase();
+   }, 10000);
 
-  afterEach(async () => {
-    // Clean up in correct order to avoid foreign key constraints
-    await prisma.registration.deleteMany();
-    await prisma.game.deleteMany();
-    await prisma.organizer.deleteMany();
-    await prisma.user.deleteMany();
-  }, 10000);
+   afterEach(async () => {
+     await clearDatabase();
+   }, 10000);
 
   it('should handle concurrent joinGame calls correctly', async () => {
     // Given: create game with capacity 1
@@ -70,31 +63,18 @@ describe('Race Conditions Test', () => {
 });
 
 describe('Game Registration Use Cases', () => {
-  beforeEach(async () => {
-    // Clean up database
-    await prisma.registration.deleteMany();
-    await prisma.game.deleteMany();
-    await prisma.organizer.deleteMany();
-    await prisma.user.deleteMany();
-  });
+   beforeEach(async () => {
+     await clearDatabase();
+   });
 
-  afterEach(async () => {
-    // Clean up after each test
-    await prisma.registration.deleteMany();
-    await prisma.game.deleteMany();
-    await prisma.organizer.deleteMany();
-    await prisma.user.deleteMany();
-  }, 10000);
+   afterEach(async () => {
+     await clearDatabase();
+   }, 10000);
 
   describe('joinGame', () => {
     it('should allow joining an open game with available capacity', async () => {
       // Given: create user and game
-      const user = await prisma.user.create({
-        data: { telegramId: 123456789n, name: 'Test User' }
-      });
-      const organizer = await prisma.organizer.create({
-        data: { userId: user.id, title: 'Test Organizer' }
-      });
+      const { user, organizer } = await createTestOrganizer(123456789n, 'Test User', 'Test Organizer');
       const game = await prisma.game.create({
         data: {
           organizerId: organizer.id,
@@ -119,14 +99,9 @@ describe('Game Registration Use Cases', () => {
 
     it('should put user in waitlist when capacity is reached', async () => {
       // Given: create game with capacity 1 and one existing registration
-      const user1 = await prisma.user.create({
-        data: { telegramId: 123456789n, name: 'User 1' }
-      });
+      const { user: user1, organizer } = await createTestOrganizer(123456789n, 'User 1', 'Test Organizer');
       const user2 = await prisma.user.create({
         data: { telegramId: 987654321n, name: 'User 2' }
-      });
-      const organizer = await prisma.organizer.create({
-        data: { userId: user1.id, title: 'Test Organizer' }
       });
       const game = await prisma.game.create({
         data: {
@@ -155,12 +130,7 @@ describe('Game Registration Use Cases', () => {
 
     it('should reject joining a game that already started', async () => {
       // Given: create game that already started
-      const user = await prisma.user.create({
-        data: { telegramId: 123456789n, name: 'Test User' }
-      });
-      const organizer = await prisma.organizer.create({
-        data: { userId: user.id, title: 'Test Organizer' }
-      });
+      const { user, organizer } = await createTestOrganizer(123456789n, 'Test User', 'Test Organizer');
       const game = await prisma.game.create({
         data: {
           organizerId: organizer.id,
@@ -179,14 +149,9 @@ describe('Game Registration Use Cases', () => {
   describe('leaveGame', () => {
     it('should allow leaving a game and promote waitlisted user', async () => {
       // Given: game with confirmed user and waitlisted user
-      const user1 = await prisma.user.create({
-        data: { telegramId: 123456789n, name: 'User 1' }
-      });
+      const { user: user1, organizer } = await createTestOrganizer(123456789n, 'User 1', 'Test Organizer');
       const user2 = await prisma.user.create({
         data: { telegramId: 987654321n, name: 'User 2' }
-      });
-      const organizer = await prisma.organizer.create({
-        data: { userId: user1.id, title: 'Test Organizer' }
       });
       const game = await prisma.game.create({
         data: {
@@ -215,12 +180,7 @@ describe('Game Registration Use Cases', () => {
   describe('markPayment', () => {
     it('should allow marking payment after game starts', async () => {
       // Given: game that already started with confirmed registration
-      const user = await prisma.user.create({
-        data: { telegramId: 123456789n, name: 'Test User' }
-      });
-      const organizer = await prisma.organizer.create({
-        data: { userId: user.id, title: 'Test Organizer' }
-      });
+      const { user, organizer } = await createTestOrganizer(123456789n, 'Test User', 'Test Organizer');
       const game = await prisma.game.create({
         data: {
           organizerId: organizer.id,
@@ -252,12 +212,7 @@ describe('Game Registration Use Cases', () => {
 
     it('should reject payment marking before game starts', async () => {
       // Given: game that hasn't started yet
-      const user = await prisma.user.create({
-        data: { telegramId: 123456789n, name: 'Test User' }
-      });
-      const organizer = await prisma.organizer.create({
-        data: { userId: user.id, title: 'Test Organizer' }
-      });
+      const { user, organizer } = await createTestOrganizer(123456789n, 'Test User', 'Test Organizer');
       const game = await prisma.game.create({
         data: {
           organizerId: organizer.id,
@@ -278,15 +233,10 @@ describe('Game Registration Use Cases', () => {
   describe('createGame', () => {
     it('should create a new game successfully', async () => {
       // Given: organizer
-      const user = await prisma.user.create({
-        data: { telegramId: 123456789n, name: 'Test User' }
-      });
-      const organizer = await prisma.organizer.create({
-        data: { userId: user.id, title: 'Test Organizer' }
-      });
+      const { user, organizer } = await createTestOrganizer(123456789n, 'Test User', 'Test Organizer');
 
       const gameData = {
-        organizerId: organizer.id,
+        organizerId: user.id, // Use userId, not organizer.id
         venueId: 'venue1',
         startsAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
         capacity: 10,
@@ -299,7 +249,7 @@ describe('Game Registration Use Cases', () => {
 
       // Then: game should be created
       expect(game.id).toBeDefined();
-      expect(game.organizerId).toBe(organizer.id);
+      expect(game.organizerId).toBe(organizer.id); // organizer.id is correct here
       expect(game.capacity).toBe(10);
       expect(game.levelTag).toBe('intermediate');
       expect(game.priceText).toBe('500 руб');
@@ -312,12 +262,7 @@ describe('Game Registration Use Cases', () => {
       const player = await prisma.user.create({
         data: { telegramId: 123456789n, name: 'Player User' }
       });
-      const organizerUser = await prisma.user.create({
-        data: { telegramId: 987654321n, name: 'Organizer User' }
-      });
-      const organizer = await prisma.organizer.create({
-        data: { userId: organizerUser.id, title: 'Test Organizer' }
-      });
+      const { organizer } = await createTestOrganizer(987654321n, 'Organizer User', 'Test Organizer');
 
       // When: link player to organizer
       const result = await linkPlayerToOrganizer(player.id, organizer.id);

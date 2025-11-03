@@ -7,6 +7,7 @@ export interface GameRepo {
   countConfirmed(gameId: string): Promise<number>;
   insertGame(g: Game): Promise<void>;
   updateStatus(gameId: string, status: GameStatus): Promise<void>;
+  transaction<T>(fn: () => Promise<T>): Promise<T>;
 }
 
 export interface RegistrationRepo {
@@ -17,6 +18,9 @@ export interface RegistrationRepo {
 }
 
 export class PrismaGameRepo implements GameRepo {
+  async transaction<T>(fn: () => Promise<T>): Promise<T> {
+    return prisma.$transaction(fn);
+  }
   async findById(id: string): Promise<Game | null> {
     const game = await prisma.game.findUnique({ where: { id } });
     if (!game) return null;
@@ -50,6 +54,13 @@ export class PrismaGameRepo implements GameRepo {
         priceText: g.priceText,
         status: g.status as GameStatus
       }
+    });
+  }
+
+  // Helper method to get organizer by userId
+  async getOrganizerByUserId(userId: string) {
+    return prisma.organizer.findUnique({
+      where: { userId }
     });
   }
 
@@ -120,5 +131,9 @@ export class PrismaRegistrationRepo implements RegistrationRepo {
       where: { id: regId },
       data: { status: RegStatus.confirmed }
     });
+  }
+
+  async transaction<T>(fn: () => Promise<T>): Promise<T> {
+    return prisma.$transaction(fn);
   }
 }

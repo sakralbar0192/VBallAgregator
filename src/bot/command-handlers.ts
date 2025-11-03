@@ -1,7 +1,11 @@
 import { Context } from 'telegraf';
+import { z } from 'zod';
 import { joinGame, leaveGame, markPayment, listGames, closeGame } from '../application/use-cases.js';
 import { prisma } from '../infrastructure/prisma.js';
 import { formatGameTimeForNotification } from '../shared/date-utils.js';
+import { ErrorHandler } from '../shared/error-handler.js';
+
+const GameIdSchema = z.string().uuid();
 
 export class CommandHandlers {
   static async handleGames(ctx: Context): Promise<void> {
@@ -32,6 +36,12 @@ export class CommandHandlers {
       return;
     }
 
+    const validationResult = GameIdSchema.safeParse(gameId);
+    if (!validationResult.success) {
+      await ctx.reply('Неверный формат ID игры. Используй UUID.');
+      return;
+    }
+
     try {
       const result = await joinGame(gameId, user.id!);
       const message = result.status === 'confirmed'
@@ -39,7 +49,7 @@ export class CommandHandlers {
         : 'Лист ожидания ⏳ (сообщим, если место освободится)';
       await ctx.reply(message);
     } catch (error: any) {
-      await ctx.reply(`Ошибка: ${error.message}`);
+      await ctx.reply(ErrorHandler.mapToUserMessage(error));
     }
   }
 
@@ -50,11 +60,17 @@ export class CommandHandlers {
       return;
     }
 
+    const validationResult = GameIdSchema.safeParse(gameId);
+    if (!validationResult.success) {
+      await ctx.reply('Неверный формат ID игры. Используй UUID.');
+      return;
+    }
+
     try {
       await leaveGame(gameId, user.id!);
       await ctx.reply('Запись отменена. Если освободилось место, пригласили следующего.');
     } catch (error: any) {
-      await ctx.reply(`Ошибка: ${error.message}`);
+      await ctx.reply(ErrorHandler.mapToUserMessage(error));
     }
   }
 
@@ -65,11 +81,17 @@ export class CommandHandlers {
       return;
     }
 
+    const validationResult = GameIdSchema.safeParse(gameId);
+    if (!validationResult.success) {
+      await ctx.reply('Неверный формат ID игры. Используй UUID.');
+      return;
+    }
+
     try {
       await markPayment(gameId, user.id!);
       await ctx.reply('Оплата отмечена 💰 Спасибо!');
     } catch (error: any) {
-      await ctx.reply(`Ошибка: ${error.message}`);
+      await ctx.reply(ErrorHandler.mapToUserMessage(error));
     }
   }
 
@@ -86,11 +108,17 @@ export class CommandHandlers {
       return;
     }
 
+    const validationResult = GameIdSchema.safeParse(gameId);
+    if (!validationResult.success) {
+      await ctx.reply('Неверный формат ID игры. Используй UUID.');
+      return;
+    }
+
     try {
       await closeGame(gameId);
       await ctx.reply('Игра закрыта для новых записей 🔒');
     } catch (error: any) {
-      await ctx.reply(`Ошибка: ${error.message}`);
+      await ctx.reply(ErrorHandler.mapToUserMessage(error));
     }
   }
 
@@ -104,17 +132,9 @@ export class CommandHandlers {
     }
 
     // Получить все регистрации пользователя
-    const registrations = await prisma.registration.findMany({
-      where: { userId: user.id },
-      include: {
-        game: {
-          include: {
-            organizer: true
-          }
-        }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
+    const { GetUserRegistrationsQuery } = await import('../application/queries/GetUserRegistrationsQuery.js');
+    const query = new GetUserRegistrationsQuery(user.id);
+    const registrations = await query.execute();
 
     if (registrations.length === 0) {
       await ctx.reply('У тебя нет активных регистраций. Найди игру командой /games');
@@ -149,6 +169,12 @@ export class CommandHandlers {
     const organizer = await prisma.organizer.findUnique({ where: { userId: user.id } });
     if (!organizer) {
       await ctx.reply('Ты не зарегистрирован как организатор');
+      return;
+    }
+
+    const validationResult = GameIdSchema.safeParse(gameId);
+    if (!validationResult.success) {
+      await ctx.reply('Неверный формат ID игры. Используй UUID.');
       return;
     }
 

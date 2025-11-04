@@ -8,7 +8,7 @@ import { config } from '../shared/config.js';
 
 // Initialize services for health checks
 const redisClient = createClient(config.redis);
-const eventBus = new EventBus();
+const eventBus = EventBus.getInstance();
 const schedulerService = new SchedulerService(eventBus);
 const healthService = new HealthCheckService(prisma, redisClient, schedulerService);
 

@@ -88,14 +88,15 @@ export function initializeWorkers() {
       logger.info('Processing reminder job', { jobId: job.id, gameId, type: job.name });
 
       // Импортируем здесь, чтобы избежать циклических зависимостей
-      const { eventPublisher, evt } = await import('./event-publisher.js');
+      const { EventBus } = await import('./event-bus.js');
+      const eventBus = EventBus.getInstance();
 
       switch (job.name) {
         case 'game-reminder-24h':
-          await eventPublisher.publish(evt('GameReminder24h', { gameId }));
+          await eventBus.publish({ type: 'GameReminder24h', occurredAt: new Date(), id: '', payload: { gameId } });
           break;
         case 'game-reminder-2h':
-          await eventPublisher.publish(evt('GameReminder2h', { gameId }));
+          await eventBus.publish({ type: 'GameReminder2h', occurredAt: new Date(), id: '', payload: { gameId } });
           break;
         default:
           logger.warn('Unknown reminder job type', { jobId: job.id, type: job.name });
@@ -111,14 +112,15 @@ export function initializeWorkers() {
       const { gameId } = job.data;
       logger.info('Processing payment reminder job', { jobId: job.id, gameId, type: job.name });
 
-      const { eventPublisher, evt } = await import('./event-publisher.js');
+      const { EventBus } = await import('./event-bus.js');
+      const eventBus = EventBus.getInstance();
 
       switch (job.name) {
         case 'payment-reminder-12h':
-          await eventPublisher.publish(evt('PaymentReminder12h', { gameId }));
+          await eventBus.publish({ type: 'PaymentReminder12h', occurredAt: new Date(), id: '', payload: { gameId } });
           break;
         case 'payment-reminder-24h':
-          await eventPublisher.publish(evt('PaymentReminder24h', { gameId }));
+          await eventBus.publish({ type: 'PaymentReminder24h', occurredAt: new Date(), id: '', payload: { gameId } });
           break;
         default:
           logger.warn('Unknown payment reminder job type', { jobId: job.id, type: job.name });

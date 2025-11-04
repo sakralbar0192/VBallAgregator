@@ -24,13 +24,24 @@ export class GameCreationWizard {
     // Начинаем сессию
     this.sessions.set(telegramId, { userId: user.id });
 
+    // Проверяем, можно ли создать игру сегодня (не менее чем за 4 часа)
+    const now = new Date();
+    const minStartTime = new Date(now.getTime() + 4 * 60 * 60 * 1000);
+    const todayMinHour = minStartTime.getHours();
+    const showToday = todayMinHour <= 21;
+
+    const dateButtons = [];
+    if (showToday) {
+      dateButtons.push([{ text: 'Сегодня', callback_data: 'wizard_date_today' }]);
+    }
+    dateButtons.push(
+      [{ text: 'Завтра', callback_data: 'wizard_date_tomorrow' }],
+      [{ text: 'Послезавтра', callback_data: 'wizard_date_day_after' }]
+    );
+
     await ctx.reply('🗓️ Выбери дату игры:', {
       reply_markup: {
-        inline_keyboard: [
-          [{ text: 'Сегодня', callback_data: 'wizard_date_today' }],
-          [{ text: 'Завтра', callback_data: 'wizard_date_tomorrow' }],
-          [{ text: 'Послезавтра', callback_data: 'wizard_date_day_after' }]
-        ]
+        inline_keyboard: dateButtons
       }
     });
   }
@@ -48,8 +59,17 @@ export class GameCreationWizard {
     session.date = selectedDate;
 
     // Шаг 2: выбор времени
+    const now = new Date();
+    const minStartTime = new Date(now.getTime() + 4 * 60 * 60 * 1000);
+    const isToday = selectedDate.toDateString() === now.toDateString();
+
+    let startHour = 9;
+    if (isToday) {
+      startHour = Math.max(9, minStartTime.getHours());
+    }
+
     const timeButtons = [];
-    for (let hour = 9; hour <= 21; hour += 1) {
+    for (let hour = startHour; hour <= 21; hour += 1) {
       const timeStr = `${hour.toString().padStart(2, '0')}:00`;
       timeButtons.push([{ text: timeStr, callback_data: `wizard_time_${hour}` }]);
     }
@@ -93,10 +113,18 @@ export class GameCreationWizard {
       return;
     }
 
-    session.levelTag = level;
+    // Map level identifiers to readable names
+    const levelNames: Record<string, string> = {
+      novice: 'Новички',
+      amateur: 'Любители',
+      experienced: 'Опытные',
+      pro: 'Профи'
+    };
+
+    session.levelTag = levelNames[level] || level;
 
     // Шаг 4: выбор площадки
-    await ctx.editMessageText(`📅 ${session.date.toLocaleDateString('ru-RU')} в ${session.date.getHours().toString().padStart(2, '0')}:00\n🎯 Уровень: ${level}\n\n🏟️ Выбери площадку:`, {
+    await ctx.editMessageText(`📅 ${session.date.toLocaleDateString('ru-RU')} в ${session.date.getHours().toString().padStart(2, '0')}:00\n🎯 Уровень: ${session.levelTag}\n\n🏟️ Выбери площадку:`, {
       reply_markup: {
         inline_keyboard: [
           [{ text: '"Чайка"', callback_data: `wizard_venue_chaika` }],
@@ -122,12 +150,9 @@ export class GameCreationWizard {
     await ctx.editMessageText(`📅 ${session.date.toLocaleDateString('ru-RU')} в ${session.date.getHours().toString().padStart(2, '0')}:00\n🎯 Уровень: ${session.levelTag}\n🏟️ ${venueKey === 'chaika' ? '"Чайка"' : venueKey === 'fok' ? '"ФОК"' : '5-ая школа'}\n\n👥 Выбери вместимость игры:`, {
       reply_markup: {
         inline_keyboard: [
-          [{ text: '6 игроков', callback_data: `wizard_capacity_6` }],
           [{ text: '8 игроков', callback_data: `wizard_capacity_8` }],
-          [{ text: '10 игроков', callback_data: `wizard_capacity_10` }],
           [{ text: '12 игроков (по умолчанию)', callback_data: `wizard_capacity_12` }],
-          [{ text: '14 игроков', callback_data: `wizard_capacity_14` }],
-          [{ text: '16 игроков', callback_data: `wizard_capacity_16` }]
+          [{ text: '14 игроков', callback_data: `wizard_capacity_14` }]
         ]
       }
     });
@@ -147,12 +172,10 @@ export class GameCreationWizard {
     await ctx.editMessageText(`📅 ${session.date.toLocaleDateString('ru-RU')} в ${session.date.getHours().toString().padStart(2, '0')}:00\n🎯 Уровень: ${session.levelTag}\n🏟️ ${(session as any).venueKey === 'chaika' ? '"Чайка"' : (session as any).venueKey === 'fok' ? '"ФОК"' : '5-ая школа'}\n👥 Вместимость: ${capacity} игроков\n\n💰 Выбери стоимость игры:`, {
       reply_markup: {
         inline_keyboard: [
-          [{ text: 'Бесплатно', callback_data: `wizard_price_free` }],
+          [{ text: '125₽', callback_data: `wizard_price_125` }],
+          [{ text: '150₽', callback_data: `wizard_price_150` }],
           [{ text: '200₽', callback_data: `wizard_price_200` }],
-          [{ text: '300₽', callback_data: `wizard_price_300` }],
-          [{ text: '400₽', callback_data: `wizard_price_400` }],
-          [{ text: '500₽ (по умолчанию)', callback_data: `wizard_price_500` }],
-          [{ text: '600₽', callback_data: `wizard_price_600` }]
+          [{ text: 'Другое', callback_data: `wizard_price_other` }]
         ]
       }
     });
@@ -180,7 +203,7 @@ export class GameCreationWizard {
       return;
     }
 
-    const priceText = price === 'free' ? 'Бесплатно' : `${price}₽`;
+    const priceText = price === 'other' ? 'По согласованию с организатором' : `${price}₽`;
 
     try {
       const game = await createGame({

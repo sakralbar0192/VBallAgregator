@@ -2,7 +2,6 @@
   import { RegStatus } from '../domain/registration.js';
   import type { GameRepo, RegistrationRepo } from '../infrastructure/repositories.js';
   import { PrismaGameRepo, PrismaRegistrationRepo } from '../infrastructure/repositories.js';
-  import { eventPublisher, evt } from '../shared/event-publisher.js';
   import { logger } from '../shared/logger.js';
   import { DomainError } from '../domain/errors.js';
   import { prisma } from '../infrastructure/prisma.js';
@@ -15,7 +14,7 @@
   const registrationRepo: RegistrationRepo = new PrismaRegistrationRepo();
 
   // Initialize new services
-  const eventBus = new EventBus();
+  const eventBus = EventBus.getInstance();
   const gameDomainService = new GameDomainService(gameRepo, registrationRepo);
   const schedulerService = new SchedulerService(eventBus);
   const gameApplicationService = new GameApplicationService(
@@ -71,14 +70,14 @@
       reg.cancel();
       await registrationRepo.upsert(reg);
       logger.info('User left game', { gameId, userId });
-      await eventPublisher.publish(evt('RegistrationCanceled', { gameId, userId }));
+      await eventBus.publish({ type: 'RegistrationCanceled', occurredAt: new Date(), id: '', payload: { gameId, userId } });
 
       // Продвинуть следующего из списка ожидания
       const next = await registrationRepo.firstWaitlisted(gameId);
       if (next) {
         await registrationRepo.promoteToConfirmed(next.id);
         logger.info('Waitlisted user promoted', { gameId, promotedUserId: next.userId });
-        await eventPublisher.publish(evt('WaitlistedPromoted', { gameId, userId: next.userId }));
+        await eventBus.publish({ type: 'WaitlistedPromoted', occurredAt: new Date(), id: '', payload: { gameId, userId: next.userId } });
       }
 
       return { ok: true };
@@ -184,13 +183,18 @@
     }
 
     // Публикуем событие для массовых напоминаний
-    await eventPublisher.publish(evt('SendPaymentReminders', {
-      gameId,
-      unpaidRegistrations: game.registrations.map(r => ({
-        userId: r.userId,
-        telegramId: r.user.telegramId
-      }))
-    }));
+    await eventBus.publish({
+      type: 'SendPaymentReminders',
+      occurredAt: new Date(),
+      id: '',
+      payload: {
+        gameId,
+        unpaidRegistrations: game.registrations.map(r => ({
+          userId: r.userId,
+          telegramId: r.user.telegramId
+        }))
+      }
+    });
 
     logger.info('Payment reminders sent', { gameId, count: game.registrations.length });
 
@@ -317,18 +321,31 @@
   /**
    * Закрывает игру.
    * @param {string} gameId - Идентификатор игры.
+   * @param {string} organizerId - Идентификатор организатора.
    * @returns {Promise<void>} - Успех операции.
    */
-  export async function closeGame(gameId: string) {
+  export async function closeGame(gameId: string, organizerId: string) {
     if (!gameId?.trim()) {
       throw new DomainError('INVALID_INPUT', 'gameId не может быть пустым');
     }
+    if (!organizerId?.trim()) {
+      throw new DomainError('INVALID_INPUT', 'organizerId не может быть пустым');
+    }
 
-    logger.info('closeGame called', { gameId });
+    logger.info('closeGame called', { gameId, organizerId });
+
+    // Проверить, что организатор владеет игрой
+    const game = await gameRepo.findById(gameId);
+    if (!game) {
+      throw new DomainError('NOT_FOUND', 'Игра не найдена');
+    }
+    if (game.organizerId !== organizerId) {
+      throw new DomainError('FORBIDDEN', 'Только организатор игры может её закрыть');
+    }
 
     await gameRepo.updateStatus(gameId, GameStatus.closed);
     logger.info('Game closed', { gameId });
-    await eventPublisher.publish(evt('GameClosed', { gameId }));
+    await eventBus.publish({ type: 'GameClosed', occurredAt: new Date(), id: '', payload: { gameId } });
   }
 
   /**
@@ -375,11 +392,16 @@
     // Здесь можно добавить логику создания связи, если нужна таблица
     // Пока просто публикуем событие для уведомления
     logger.info('Player linked to organizer', { playerId, organizerId, playerName: player.name });
-    await eventPublisher.publish(evt('PlayerLinkedToOrganizer', {
-      playerId,
-      organizerId,
-      playerName: player.name
-    }));
+    await eventBus.publish({
+      type: 'PlayerLinkedToOrganizer',
+      occurredAt: new Date(),
+      id: '',
+      payload: {
+        playerId,
+        organizerId,
+        playerName: player.name
+      }
+    });
 
     return { ok: true };
   }

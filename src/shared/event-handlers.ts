@@ -1,17 +1,19 @@
-import { EventBus, DomainEvent } from '../shared/event-bus.js';
-import { EnhancedNotificationService } from '../shared/enhanced-notification-service.js';
-import { config } from '../shared/config.js';
-import { prisma } from './prisma.js';
-import { formatGameTimeForNotification, getUserTimezone } from '../shared/date-utils.js';
-import { logger } from '../shared/logger.js';
-import { DomainEvent as TypedDomainEvent } from '../shared/types.js';
+import { EventBus } from './event-bus.js';
+import { EnhancedNotificationService } from './enhanced-notification-service.js';
+import { config } from './config.js';
+import { prisma } from '../infrastructure/prisma.js';
+import { formatGameTimeForNotification, getUserTimezone } from './date-utils.js';
+import { logger } from './logger.js';
+import { DomainEvent as TypedDomainEvent } from './types.js';
+import { getOrganizerName, getVenueName } from './game-constants.js';
 
 const notificationService = new EnhancedNotificationService(config.telegram.botToken);
 
-export async function setupEventHandlers(eventBus: EventBus): Promise<void> {
+export async function registerEventHandlers(eventBus: EventBus): Promise<void> {
   // Game reminder handlers
   eventBus.subscribe('GameReminder24h', { handle: handleGameReminder24h });
   eventBus.subscribe('GameReminder2h', { handle: handleGameReminder2h });
+  eventBus.subscribe('GameCreated', { handle: handleGameCreated });
 
   // Payment reminder handlers
   eventBus.subscribe('PaymentReminder12h', { handle: handlePaymentReminder12h });
@@ -22,6 +24,12 @@ export async function setupEventHandlers(eventBus: EventBus): Promise<void> {
   eventBus.subscribe('PlayerJoined', { handle: handlePlayerJoined });
   eventBus.subscribe('WaitlistedPromoted', { handle: handleWaitlistedPromoted });
   eventBus.subscribe('PaymentMarked', { handle: handlePaymentMarked });
+
+  // Additional events
+  eventBus.subscribe('RegistrationCanceled', { handle: handleRegistrationCanceled });
+  eventBus.subscribe('GameClosed', { handle: handleGameClosed });
+  eventBus.subscribe('PlayerLinkedToOrganizer', { handle: handlePlayerLinkedToOrganizer });
+  eventBus.subscribe('PaymentAttemptRejectedEarly', { handle: handlePaymentAttemptRejectedEarly });
 
   logger.info('Event handlers setup completed');
 }
@@ -69,7 +77,7 @@ async function handleGameReminder24h(event: TypedDomainEvent) {
     .map(reg => ({
       userId: reg.userId,
       chatId: reg.user.telegramId!,
-      message: `⏰ Напоминание: игра завтра в ${formatGameTimeForNotification(game.startsAt, getUserTimezone(reg.userId))}!\n🏟️ ${game.levelTag || 'Общий уровень'}\n💰 ${game.priceText || 'Бесплатно'}`,
+      message: `⏰ Напоминание: игра завтра ${formatGameTimeForNotification(game.startsAt, getUserTimezone(reg.userId))}!\n🏟️ ${getVenueName(game.venueId) || ''}\n💰 ${game.priceText || 'Бесплатно'}`,
       type: 'game-reminder-24h',
       gameId
     }));
@@ -112,7 +120,7 @@ async function handleGameReminder2h(event: TypedDomainEvent) {
     .map(reg => ({
       userId: reg.userId,
       chatId: reg.user.telegramId!,
-      message: `🚨 Через 2 часа игра!\n⏰ ${formatGameTimeForNotification(game.startsAt, getUserTimezone(reg.userId))}\n🏟️ ${game.levelTag || 'Общий уровень'}\n💰 ${game.priceText || 'Бесплатно'}`,
+      message: `🚨 Через 2 часа игра!\n⏰ ${formatGameTimeForNotification(game.startsAt, getUserTimezone(reg.userId))}\n🏟️ ${getVenueName(game.venueId) || ''}\n💰 ${game.priceText || 'Бесплатно'}`,
       type: 'game-reminder-2h',
       gameId
     }));
@@ -161,7 +169,7 @@ async function handlePaymentReminder12h(event: TypedDomainEvent) {
     .map(reg => ({
       userId: reg.userId,
       chatId: reg.user.telegramId!,
-      message: `💰 Напоминание: оплата за игру "${game.levelTag || 'Волейбол'}"\nОрганизатор: ${game.organizerId}\n💳 Пожалуйста, произведите оплату`,
+      message: `💰 Напоминание: оплата за игру ${game.id || ''}\n${getOrganizerName(game)}💳 Пожалуйста, произведите оплату`,
       type: 'payment-reminder-12h',
       gameId
     }));
@@ -210,7 +218,7 @@ async function handlePaymentReminder24h(event: TypedDomainEvent) {
     .map(reg => ({
       userId: reg.userId,
       chatId: reg.user.telegramId!,
-      message: `⚠️ Последнее напоминание об оплате!\n💰 Игра "${game.levelTag || 'Волейбол'}"\nОрганизатор: ${game.organizerId}\n⏰ Просьба оплатить в ближайшее время`,
+      message: `⚠️ Последнее напоминание об оплате!\n💰 Игра ${game.id || ''}\n${getOrganizerName(game)}⏰ Просьба оплатить в ближайшее время`,
       type: 'payment-reminder-24h',
       gameId
     }));
@@ -339,18 +347,81 @@ async function handlePaymentMarked(event: TypedDomainEvent) {
   }
 }
 
+async function handleGameCreated(event: TypedDomainEvent) {
+  if (event.type !== 'GameCreated') return;
+  const { gameId } = event.payload;
+  logger.info('Processing GameCreated', { gameId });
+
+  const game = await prisma.game.findUnique({
+    where: { id: gameId },
+    include: {
+      organizer: { include: { user: true } }
+    }
+  });
+
+  if (!game) {
+    logger.warn('Game not found for new game notifications', { gameId });
+    return;
+  }
+
+  // Найти подходящих игроков: активные пользователи, которые не являются организатором этой игры
+  const suitableUsers = await prisma.user.findMany({
+    where: {
+      id: { not: game.organizer.userId } // Исключаем организатора
+    },
+    include: {
+      notificationPreferences: true
+    }
+  });
+
+  // Фильтруем пользователей без Telegram ID на уровне приложения
+  const filteredUsers = suitableUsers.filter(user => user.telegramId !== null);
+
+  const message = `🎾 Новая игра!\n${formatGameTimeForNotification(game.startsAt)}\n🏟️ ${game.levelTag || 'Общий уровень'}\n💰 ${game.priceText || 'По согласованию с организатором'}\n${getOrganizerName(game)}\nПрисоединиться: /join ${gameId}`;
+
+  const notifications = filteredUsers
+    .filter(user => {
+      // Проверяем настройки уведомлений
+      const prefs = (user as any).notificationPreferences;
+      return prefs?.globalNotifications !== false;
+    })
+    .map(user => ({
+      userId: user.id,
+      chatId: user.telegramId!,
+      message,
+      type: 'new-game-notification',
+      gameId
+    }));
+
+  try {
+    const result = await notificationService.sendBatch(notifications);
+    logger.info('New game notifications sent', {
+      gameId,
+      total: notifications.length,
+      successful: result.successful,
+      failed: result.failed
+    });
+  } catch (error) {
+    logger.error('Failed to send new game notifications', { gameId, error: error instanceof Error ? error.message : 'Unknown error' });
+  }
+}
+
 async function handleSendPaymentReminders(event: TypedDomainEvent) {
+  console.log('handleSendPaymentReminders')
   if (event.type !== 'SendPaymentReminders') return;
   const { gameId, unpaidRegistrations } = event.payload;
   logger.info('Processing SendPaymentReminders', { gameId, count: unpaidRegistrations.length });
 
-  const game = await prisma.game.findUnique({ where: { id: gameId } });
+  const game = await prisma.game.findUnique({
+    where: { id: gameId },
+    include: { organizer: { include: { user: true } } }
+  });
   if (!game) {
     logger.warn('Game not found for payment reminders', { gameId });
     return;
   }
-
-  const message = `💰 Напоминание об оплате!\nИгра "${game.levelTag || 'Волейбол'}" завершена\nОрганизатор: ${game.organizerId}\n⏰ Пожалуйста, отметьте оплату командой /pay ${gameId}`;
+  
+  const message = `💰 Напоминание об оплате!\nИгра "${game.levelTag || 'Волейбол'}" завершена\n${getOrganizerName(game)}⏰ Пожалуйста, отметьте оплату командой /pay ${gameId}`;
 
   const notifications = unpaidRegistrations
     .filter(reg => reg.telegramId)
@@ -373,4 +444,32 @@ async function handleSendPaymentReminders(event: TypedDomainEvent) {
   } catch (error) {
     logger.error('Failed to send manual payment reminders', { gameId, error: error instanceof Error ? error.message : 'Unknown error' });
   }
+}
+
+async function handleRegistrationCanceled(event: TypedDomainEvent) {
+  if (event.type !== 'RegistrationCanceled') return;
+  // Обработчик для отмены регистрации - пока пустой, можно добавить логику позже
+  logger.info('Processing RegistrationCanceled', { gameId: event.payload.gameId, userId: event.payload.userId });
+}
+
+async function handleGameClosed(event: TypedDomainEvent) {
+  if (event.type !== 'GameClosed') return;
+  // Обработчик для закрытия игры - пока пустой, можно добавить логику позже
+  logger.info('Processing GameClosed', { gameId: event.payload.gameId });
+}
+
+async function handlePlayerLinkedToOrganizer(event: TypedDomainEvent) {
+  if (event.type !== 'PlayerLinkedToOrganizer') return;
+  // Обработчик для связи игрока с организатором - пока пустой, можно добавить логику позже
+  logger.info('Processing PlayerLinkedToOrganizer', {
+    playerId: event.payload.playerId,
+    organizerId: event.payload.organizerId,
+    playerName: event.payload.playerName
+  });
+}
+
+async function handlePaymentAttemptRejectedEarly(event: TypedDomainEvent) {
+  if (event.type !== 'PaymentAttemptRejectedEarly') return;
+  // Обработчик для ранней попытки оплаты - пока пустой, можно добавить логику позже
+  logger.info('Processing PaymentAttemptRejectedEarly', { gameId: event.payload.gameId, userId: event.payload.userId });
 }

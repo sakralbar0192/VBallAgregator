@@ -53,3 +53,25 @@ export function getUserLocale(userId: string): string {
   // TODO: Получать из БД или кеша настроек пользователя
   return getDefaultUserPreferences().locale;
 }
+
+/**
+ * Форматирует дату для кнопок: числами, год только если отличается от текущего
+ */
+export function formatDateForButton(date: Date, userTz: string = 'Asia/Irkutsk'): string {
+  const now = new Date();
+  const gameDate = new Date(date.toLocaleString('en-US', { timeZone: userTz }));
+
+  const currentYear = now.getFullYear();
+  const gameYear = gameDate.getFullYear();
+
+  const options: Intl.DateTimeFormatOptions = {
+    day: 'numeric',
+    month: 'numeric',
+    ...(gameYear !== currentYear && { year: '2-digit' }),
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: userTz
+  };
+
+  return gameDate.toLocaleDateString('ru-RU', options);
+}

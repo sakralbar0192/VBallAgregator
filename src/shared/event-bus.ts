@@ -10,8 +10,18 @@ export interface EventHandler {
 }
 
 export class EventBus {
+  private static instance: EventBus;
   private handlers = new Map<string, EventHandler[]>();
   private deadLetterQueue: DomainEvent[] = [];
+
+  private constructor() {}
+
+  static getInstance(): EventBus {
+    if (!EventBus.instance) {
+      EventBus.instance = new EventBus();
+    }
+    return EventBus.instance;
+  }
 
   subscribe(eventType: string, handler: EventHandler): void {
     if (!this.handlers.has(eventType)) {
@@ -23,6 +33,8 @@ export class EventBus {
   async publish(event: DomainEvent): Promise<void> {
     logger.info('Publishing event via EventBus', { eventType: event.type, eventId: event.id });
     const handlers = this.handlers.get(event.type) || [];
+
+    console.log('handlers', handlers)
 
     const results = await Promise.allSettled(
       handlers.map(handler => this.handleWithRetry(handler, event))

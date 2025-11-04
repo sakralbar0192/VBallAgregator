@@ -251,13 +251,6 @@ bot.action(/^wizard_price_(.+)$/, async (ctx: any) => {
   await GameCreationWizard.handlePriceSelection(ctx, price);
 });
 
-bot.on('text', async (ctx) => {
-  // Обработка неизвестных команд
-  if (ctx.message.text?.startsWith('/')) {
-    await ctx.reply('Неизвестная команда. Доступные команды:\n/start - регистрация\n/games - список игр\n/join <id> - записаться\n/leave <id> - отменить запись\n/pay <id> - отметить оплату\n/newgame - создать игру\n/my - мои игры\n/payments <id> - статус оплат (организатор)\n/close <id> - закрыть игру (организатор)');
-  }
-});
-
 /**
  * Обработчик команды /my
  * Показывает игры пользователя (как игрока или организатора)
@@ -319,6 +312,68 @@ bot.action(/^remind_payments_(.+)$/, async (ctx) => {
     }
   } catch (error) {
     await ctx.answerCbQuery('Ошибка при отправке напоминаний');
+  }
+});
+
+/**
+ * Обработчик действия join_game_*
+ * Позволяет присоединиться к игре через кнопку
+ * @param ctx - Контекст Telegraf
+ * @param gameId - UUID игры
+ */
+bot.action(/^join_game_(.+)$/, async (ctx) => {
+  const gameId = ctx.match[1] as string;
+  await CommandHandlers.handleJoin(ctx, gameId);
+});
+
+/**
+ * Обработчик действия leave_game_*
+ * Позволяет отменить запись на игру через кнопку
+ * @param ctx - Контекст Telegraf
+ * @param gameId - UUID игры
+ */
+bot.action(/^leave_game_(.+)$/, async (ctx) => {
+  const gameId = ctx.match[1] as string;
+  await CommandHandlers.handleLeave(ctx, gameId);
+});
+
+/**
+ * Обработчик действия pay_game_*
+ * Позволяет отметить оплату через кнопку
+ * @param ctx - Контекст Telegraf
+ * @param gameId - UUID игры
+ */
+bot.action(/^pay_game_(.+)$/, async (ctx) => {
+  const gameId = ctx.match[1] as string;
+  await CommandHandlers.handlePay(ctx, gameId);
+});
+
+/**
+ * Обработчик действия close_game_*
+ * Позволяет закрыть игру через кнопку
+ * @param ctx - Контекст Telegraf
+ * @param gameId - UUID игры
+ */
+bot.action(/^close_game_(.+)$/, async (ctx) => {
+  const gameId = ctx.match[1] as string;
+  await CommandHandlers.handleClose(ctx, gameId);
+});
+
+/**
+ * Обработчик действия payments_game_*
+ * Показывает статус оплат для игры
+ * @param ctx - Контекст Telegraf
+ * @param gameId - UUID игры
+ */
+bot.action(/^payments_game_(.+)$/, async (ctx) => {
+  const gameId = ctx.match[1] as string;
+  await CommandHandlers.handlePayments(ctx, gameId);
+});
+
+bot.on('text', async (ctx) => {
+  // Обработка неизвестных команд
+  if (ctx.message.text?.startsWith('/')) {
+    await ctx.reply('Неизвестная команда. Доступные команды:\n/start - регистрация\n/games - список игр\n/join <id> - записаться\n/leave <id> - отменить запись\n/pay <id> - отметить оплату\n/newgame - создать игру\n/my - мои игры\n/payments <id> - статус оплат (организатор)\n/close <id> - закрыть игру (организатор)');
   }
 });
 

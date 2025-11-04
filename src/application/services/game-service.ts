@@ -4,7 +4,6 @@ import { GameDomainService } from '../../domain/services/game-domain-service.js'
 import { SchedulerService } from '../../shared/scheduler-service.js';
 import { v4 as uuid } from 'uuid';
 import { Game } from '../../domain/game.js';
-import { eventPublisher, evt } from '../../shared/event-publisher.js';
 import { logger } from '../../shared/logger.js';
 import { DomainError } from '../../domain/errors.js';
 import { metrics } from '../../shared/metrics.js';
@@ -160,13 +159,18 @@ export class GameApplicationService {
     logger.info('Game created', { gameId: g.id });
     metrics.gamesCreated.increment();
 
-    await eventPublisher.publish(evt('GameCreated', {
-      gameId: g.id,
-      startsAt: g.startsAt.toISOString(),
-      capacity: g.capacity,
-      levelTag: g.levelTag,
-      priceText: g.priceText
-    }));
+    await this.eventBus.publish({
+      type: 'GameCreated',
+      occurredAt: new Date(),
+      id: '',
+      payload: {
+        gameId: g.id,
+        startsAt: g.startsAt.toISOString(),
+        capacity: g.capacity,
+        levelTag: g.levelTag,
+        priceText: g.priceText
+      }
+    });
 
     // Schedule reminders
     await this.schedulerService.scheduleGameReminder24h(g.id, g.startsAt);

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { prisma } from '../infrastructure/prisma.js';
 import { joinGame, leaveGame, markPayment, createGame, linkPlayerToOrganizer, finishGame } from '../application/use-cases.js';
 import { GameStatus } from '../domain/game.js';
@@ -457,7 +457,7 @@ describe('Game Registration Use Cases', () => {
      // Mock Telegraf context
      mockCtx = {
        from: { id: 123456789n },
-       reply: (() => {}) as any
+       reply: jest.fn()
      };
    });
 
@@ -469,8 +469,8 @@ describe('Game Registration Use Cases', () => {
      // When: call handleGames
      await CommandHandlers.handleGames(mockCtx);
 
-     // Then: should reply with no games message
-     expect(mockCtx.reply).toHaveBeenCalledWith('Нет активных игр. Создай новую командой /newgame');
+     // Then: should reply with no games message for non-organizer
+     expect(mockCtx.reply).toHaveBeenCalledWith('Нет активных игр. Ждем, когда организаторы создадут новые игры');
    }, 10000);
 
    it('should handle handleJoin command with valid game', async () => {

@@ -4,7 +4,7 @@ import { bot } from './src/bot.js';
 import { SchedulerService } from './src/shared/scheduler-service.js';
 import { EventBus } from './src/shared/event-bus.js';
 import { HealthCheckService } from './src/infrastructure/health.js';
-import { setupEventHandlers } from './src/infrastructure/event-setup.js';
+import { registerEventHandlers } from './src/shared/event-handlers.js';
 import { logger } from './src/shared/logger.js';
 import { prisma } from './src/infrastructure/prisma.js';
 import { createClient } from 'redis';
@@ -19,7 +19,7 @@ async function startApp() {
     const redisClient = createClient(config.redis);
     await redisClient.connect();
 
-    const eventBus = new EventBus();
+    const eventBus = EventBus.getInstance();
     const schedulerService = new SchedulerService(eventBus);
     const healthService = new HealthCheckService(
       prisma,
@@ -28,7 +28,7 @@ async function startApp() {
     );
 
     // 3. Настройка обработчиков событий
-    await setupEventHandlers(eventBus);
+    await registerEventHandlers(eventBus);
     logger.info('Event handlers registered');
 
     // 4. Инициализация workers

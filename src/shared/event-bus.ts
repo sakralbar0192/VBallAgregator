@@ -21,6 +21,7 @@ export class EventBus {
   }
 
   async publish(event: DomainEvent): Promise<void> {
+    logger.info('Publishing event via EventBus', { eventType: event.type, eventId: event.id });
     const handlers = this.handlers.get(event.type) || [];
 
     const results = await Promise.allSettled(

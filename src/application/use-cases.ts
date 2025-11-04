@@ -1,14 +1,12 @@
-  import { v4 as uuid } from 'uuid';
   import { Game, GameStatus } from '../domain/game.js';
-  import { Registration, RegStatus } from '../domain/registration.js';
+  import { RegStatus } from '../domain/registration.js';
   import type { GameRepo, RegistrationRepo } from '../infrastructure/repositories.js';
   import { PrismaGameRepo, PrismaRegistrationRepo } from '../infrastructure/repositories.js';
   import { eventPublisher, evt } from '../shared/event-publisher.js';
   import { logger } from '../shared/logger.js';
   import { DomainError } from '../domain/errors.js';
   import { prisma } from '../infrastructure/prisma.js';
-  import { addHours } from 'date-fns';
-  import { GameApplicationService, MarkPaymentCommand, JoinGameCommand } from './services/game-service.js';
+  import { GameApplicationService } from './services/game-service.js';
   import { EventBus } from '../shared/event-bus.js';
   import { GameDomainService } from '../domain/services/game-domain-service.js';
   import { SchedulerService } from '../shared/scheduler-service.js';
@@ -149,8 +147,54 @@
 
     // Use new SchedulerService
     await schedulerService.schedulePaymentReminder12h(gameId, game.startsAt);
+    await schedulerService.schedulePaymentReminder24h(gameId, game.startsAt);
 
     logger.info('Payment reminders scheduled', { gameId });
+  }
+
+  /**
+   * Отправляет массовые напоминания об оплате для игры.
+   * @param {string} gameId - Идентификатор игры.
+   * @param {string} organizerId - ID организатора.
+   * @returns {Promise<{ sent: number }>} - Количество отправленных напоминаний.
+   */
+  export async function sendPaymentReminders(gameId: string, organizerId: string | undefined) {
+    if (!gameId?.trim()) {
+      throw new DomainError('INVALID_INPUT', 'gameId не может быть пустым');
+    }
+    if (!organizerId) {
+      throw new DomainError('INVALID_INPUT', 'organizerId не может быть пустым');
+    }
+
+    logger.info('sendPaymentReminders called', { gameId, organizerId });
+
+    // Проверить, что организатор владеет игрой
+    const game = await prisma.game.findUnique({
+      where: { id: gameId, organizerId },
+      include: {
+        registrations: {
+          where: { status: 'confirmed', paymentStatus: 'unpaid' },
+          include: { user: true }
+        }
+      }
+    });
+
+    if (!game) {
+      throw new DomainError('NOT_FOUND', 'Игра не найдена или доступ запрещен');
+    }
+
+    // Публикуем событие для массовых напоминаний
+    await eventPublisher.publish(evt('SendPaymentReminders', {
+      gameId,
+      unpaidRegistrations: game.registrations.map(r => ({
+        userId: r.userId,
+        telegramId: r.user.telegramId
+      }))
+    }));
+
+    logger.info('Payment reminders sent', { gameId, count: game.registrations.length });
+
+    return { sent: game.registrations.length };
   }
 
   /**
@@ -285,6 +329,24 @@
     await gameRepo.updateStatus(gameId, GameStatus.closed);
     logger.info('Game closed', { gameId });
     await eventPublisher.publish(evt('GameClosed', { gameId }));
+  }
+
+  /**
+   * Завершает игру и планирует напоминания об оплате.
+   * @param {string} gameId - Идентификатор игры.
+   * @returns {Promise<void>} - Успех операции.
+   */
+  export async function finishGame(gameId: string) {
+    if (!gameId?.trim()) {
+      throw new DomainError('INVALID_INPUT', 'gameId не может быть пустым');
+    }
+
+    logger.info('finishGame called', { gameId });
+
+    // Use new Application Service
+    await gameApplicationService.finishGame(gameId);
+
+    logger.info('Game finished and payment reminders scheduled', { gameId });
   }
 
   /**

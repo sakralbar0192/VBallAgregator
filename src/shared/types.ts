@@ -4,6 +4,7 @@ export type DomainEvent =
   | { type: 'GameReminder2h'; payload: { gameId: string } }
   | { type: 'PaymentReminder12h'; payload: { gameId: string } }
   | { type: 'PaymentReminder24h'; payload: { gameId: string } }
+  | { type: 'SendPaymentReminders'; payload: { gameId: string; unpaidRegistrations: Array<{ userId: string; telegramId: bigint }> } }
   | { type: 'PlayerJoined'; payload: { gameId: string; userId: string; status: string } }
   | { type: 'WaitlistedPromoted'; payload: { gameId: string; userId: string } }
   | { type: 'PaymentMarked'; payload: { gameId: string; userId: string } }

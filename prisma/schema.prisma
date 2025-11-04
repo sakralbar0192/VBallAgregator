@@ -26,18 +26,19 @@ enum PaymentStatus {
 }
 
 model User {
-  id          String   @id @default(uuid())
-  telegramId  BigInt   @unique
-  name        String
-  levelTag    String?
-  createdAt   DateTime @default(now())
+   id          String   @id @default(uuid())
+   telegramId  BigInt   @unique
+   name        String
+   levelTag    String?
+   createdAt   DateTime @default(now())
 
-  // Relations
-  registrations Registration[]
-  organizer     Organizer?
+   // Relations
+   registrations Registration[]
+   organizer     Organizer?
+   notificationPreferences UserNotificationPreferences?
 
-  @@index([telegramId])
-  @@map("users")
+   @@index([telegramId])
+   @@map("users")
 }
 
 model Organizer {
@@ -73,20 +74,38 @@ model Game {
 }
 
 model Registration {
-  id            String        @id @default(uuid())
-  gameId        String
-  userId        String
-  status        RegStatus
-  paymentStatus PaymentStatus @default(unpaid)
-  paymentMarkedAt DateTime?
-  createdAt     DateTime      @default(now())
+   id            String        @id @default(uuid())
+   gameId        String
+   userId        String
+   status        RegStatus
+   paymentStatus PaymentStatus @default(unpaid)
+   paymentMarkedAt DateTime?
+   createdAt     DateTime      @default(now())
 
-  // Relations
-  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+   // Relations
+   game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([gameId, userId])
-  @@index([gameId, status, createdAt])
-  @@index([userId])
-  @@map("registrations")
+   @@unique([gameId, userId])
+   @@index([gameId, status, createdAt])
+   @@index([userId])
+   @@map("registrations")
+}
+
+model UserNotificationPreferences {
+    userId                    String   @id
+    globalNotifications       Boolean  @default(true)
+    paymentRemindersAuto      Boolean  @default(true)
+    paymentRemindersManual    Boolean  @default(true)
+    gameReminders24h          Boolean  @default(true)
+    gameReminders2h           Boolean  @default(true)
+    organizerNotifications    Boolean  @default(true)
+    createdAt                 DateTime @default(now())
+    updatedAt                 DateTime @updatedAt
+
+    // Relations
+    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@index([globalNotifications])
+    @@map("user_notification_preferences")
 }

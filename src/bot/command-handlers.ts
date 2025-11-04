@@ -4,6 +4,7 @@ import { joinGame, leaveGame, markPayment, listGames, closeGame } from '../appli
 import { prisma } from '../infrastructure/prisma.js';
 import { formatGameTimeForNotification } from '../shared/date-utils.js';
 import { ErrorHandler } from '../shared/error-handler.js';
+import { userPreferencesService } from '../shared/user-preferences-service.js';
 
 const GameIdSchema = z.string().uuid();
 
@@ -186,33 +187,87 @@ export class CommandHandlers {
       return;
     }
 
-    // Получить игру и все регистрации
-    const game = await prisma.game.findUnique({
-      where: { id: gameId, organizerId: organizer.id },
-      include: {
-        registrations: {
-          include: { user: true },
-          where: { status: 'confirmed' }
-        }
-      }
-    });
+    // Использовать новый query для дашборда
+    const { GamePaymentsDashboardQuery } = await import('../application/queries/GamePaymentsDashboardQuery.js');
+    const query = new GamePaymentsDashboardQuery(gameId, organizer.id);
 
-    if (!game) {
-      await ctx.reply('Игра не найдена или ты не организатор этой игры');
+    try {
+      const dashboard = await query.execute();
+
+      const game = await prisma.game.findUnique({ where: { id: gameId } });
+      if (!game) {
+        await ctx.reply('Игра не найдена');
+        return;
+      }
+
+      const date = formatGameTimeForNotification(game.startsAt);
+
+      const payments = dashboard.players.map(player => {
+        const paymentStatus = player.paymentStatus === 'paid' ? '💰 Оплачено' : '⏳ Не оплачено';
+        const paymentDate = player.paymentMarkedAt ? ` (${player.paymentMarkedAt.toLocaleDateString('ru-RU')})` : '';
+        return `${player.name}: ${paymentStatus}${paymentDate}`;
+      }).join('\n');
+
+      const buttons = dashboard.unpaidCount > 0 ? [
+        [{ text: '📢 Отправить напоминания', callback_data: `remind_payments_${gameId}` }]
+      ] : [];
+
+      await ctx.reply(
+        `💰 Статус оплат для игры ${date}\n\n${payments}\n\nОплачено: ${dashboard.paidCount}/${dashboard.players.length}`,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: buttons.length > 0 ? { inline_keyboard: buttons } : undefined
+        }
+      );
+    } catch (error) {
+      await ctx.reply('Не удалось получить данные об оплатах');
+    }
+  }
+
+  static async handleSettings(ctx: Context): Promise<void> {
+    const telegramId = ctx.from!.id;
+
+    const user = await prisma.user.findUnique({ where: { telegramId } });
+    if (!user) {
+      await ctx.reply('Сначала зарегистрируйся командой /start');
       return;
     }
 
-    const date = formatGameTimeForNotification(game.startsAt);
+    try {
+      const prefs = await userPreferencesService.getPreferences(user.id);
 
-    const payments = game.registrations.map((reg: any) => {
-      const paymentStatus = reg.paymentStatus === 'paid' ? '💰 Оплачено' : '⏳ Не оплачено';
-      const paymentDate = reg.paymentMarkedAt ? ` (${reg.paymentMarkedAt.toLocaleDateString('ru-RU')})` : '';
-      return `${reg.user.name}: ${paymentStatus}${paymentDate}`;
-    }).join('\n');
+      const settingsText = `
+🔔 Настройки уведомлений:
 
-    const paidCount = game.registrations.filter((r: any) => r.paymentStatus === 'paid').length;
-    const totalCount = game.registrations.length;
+🌐 Глобальные уведомления: ${prefs.globalNotifications ? '✅ Включены' : '❌ Отключены'}
 
-    await ctx.reply(`💰 Статус оплат для игры ${date}\n\n${payments}\n\nОплачено: ${paidCount}/${totalCount}`, { parse_mode: 'Markdown' });
+💰 Автоматические напоминания об оплате: ${prefs.paymentRemindersAuto ? '✅ Включены' : '❌ Отключены'}
+📢 Ручные напоминания об оплате: ${prefs.paymentRemindersManual ? '✅ Включены' : '❌ Отключены'}
+
+🎾 Напоминания за 24 часа: ${prefs.gameReminders24h ? '✅ Включены' : '❌ Отключены'}
+🚨 Напоминания за 2 часа: ${prefs.gameReminders2h ? '✅ Включены' : '❌ Отключены'}
+
+👥 Уведомления организатора: ${prefs.organizerNotifications ? '✅ Включены' : '❌ Отключены'}
+      `.trim();
+
+      const buttons = [
+        [
+          { text: prefs.globalNotifications ? '❌ Отключить все' : '✅ Включить все', callback_data: 'toggle_global' }
+        ],
+        [
+          { text: '💰 Оплаты', callback_data: 'settings_payments' },
+          { text: '🎾 Игры', callback_data: 'settings_games' }
+        ],
+        [
+          { text: '👥 Организатор', callback_data: 'settings_organizer' }
+        ]
+      ];
+
+      await ctx.reply(settingsText, {
+        reply_markup: { inline_keyboard: buttons }
+      });
+    } catch (error) {
+      await ctx.reply('Не удалось загрузить настройки');
+    }
   }
 }

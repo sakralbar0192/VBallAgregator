@@ -27,6 +27,7 @@ export class InMemoryEventPublisher implements EventPublisher {
   }
 
   async publish(event: DomainEvent): Promise<void> {
+    logger.info('Publishing event', { eventType: event.type, eventId: (event as any).id });
     const handlers = this.handlers.get(event.type) || [];
     await Promise.all(handlers.map(handler => handler(event)));
   }

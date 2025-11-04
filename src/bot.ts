@@ -173,6 +173,36 @@ bot.command('payments', async (ctx) => {
   await CommandHandlers.handlePayments(ctx, gameId);
 });
 
+// Обработчик callback для напоминаний об оплате
+bot.action(/^remind_payments_(.+)$/, async (ctx) => {
+  const gameId = ctx.match[1] as string;
+  const telegramId = ctx.from!.id;
+
+  const user = await prisma.user.findUnique({ where: { telegramId } });
+  if (!user) {
+    return ctx.answerCbQuery('Пользователь не найден');
+  }
+
+  const organizer = await prisma.organizer.findUnique({ where: { userId: user.id } });
+  if (!organizer) {
+    return ctx.answerCbQuery('Ты не организатор этой игры');
+  }
+
+  try {
+    const { sendPaymentReminders } = await import('./application/use-cases.js');
+    await sendPaymentReminders(gameId, organizer.id!);
+
+    await ctx.answerCbQuery('Напоминания отправлены!');
+    if (ctx.callbackQuery.message && 'text' in ctx.callbackQuery.message) {
+      await ctx.editMessageText(ctx.callbackQuery.message.text + '\n\n✅ Напоминания отправлены!', {
+        parse_mode: 'Markdown'
+      });
+    }
+  } catch (error) {
+    await ctx.answerCbQuery('Ошибка при отправке напоминаний');
+  }
+});
+
 bot.catch((err, ctx) => {
   console.error('Bot error:', err);
   ctx.reply('Произошла ошибка. Попробуй позже.');

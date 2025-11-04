@@ -141,6 +141,22 @@ export class GameApplicationService {
     return g;
   }
 
+  async finishGame(gameId: string): Promise<void> {
+    const game = await this.gameRepo.findById(gameId);
+    if (!game) {
+      throw new DomainError('NOT_FOUND', 'Игра не найдена');
+    }
+
+    game.finish();
+    await this.gameRepo.updateStatus(gameId, game.status);
+
+    // Schedule payment reminders after game finishes
+    await this.schedulerService.schedulePaymentReminder12h(gameId, game.startsAt);
+    await this.schedulerService.schedulePaymentReminder24h(gameId, game.startsAt);
+
+    logger.info('Game finished and payment reminders scheduled', { gameId });
+  }
+
   async registerUser(command: RegisterUserCommand): Promise<{ userId: string }> {
     const user = await this.gameRepo.transaction(async () => {
       // Note: This is a simple upsert, no complex business logic needed

@@ -166,7 +166,7 @@ export class NotificationService {
 }
 
 // Простая метрика для уведомлений
-class NotificationTracker {
+export class NotificationTracker {
   private metrics = new Map<string, { sent: number; delivered: number; failed: number; retries: number }>();
 
   recordSent(type: string): void {

@@ -25,11 +25,20 @@ export class NotificationTracker {
     this.metrics.set(key, current);
   }
 
-  static recordFailed(type: string): void {
+  static recordFailed(type: string, reason?: string): void {
     const key = this.getKey(type);
     const current = this.metrics.get(key) || { sent: 0, delivered: 0, failed: 0, retries: 0 };
     current.failed++;
     this.metrics.set(key, current);
+
+    // Update global metrics
+    import('./metrics.js').then(({ metrics }) => {
+      metrics.notificationsFailed.increment();
+    });
+  }
+
+  static recordBlocked(type: string, reason: string): void {
+    this.recordFailed(type, reason);
   }
 
   static recordRetry(type: string): void {

@@ -1,12 +1,12 @@
 import { EventBus, DomainEvent } from '../shared/event-bus.js';
-import { NotificationService } from '../shared/notification-service.js';
+import { EnhancedNotificationService } from '../shared/enhanced-notification-service.js';
 import { config } from '../shared/config.js';
 import { prisma } from './prisma.js';
 import { formatGameTimeForNotification, getUserTimezone } from '../shared/date-utils.js';
 import { logger } from '../shared/logger.js';
 import { DomainEvent as TypedDomainEvent } from '../shared/types.js';
 
-const notificationService = new NotificationService(config.telegram.botToken);
+const notificationService = new EnhancedNotificationService(config.telegram.botToken);
 
 export async function setupEventHandlers(eventBus: EventBus): Promise<void> {
   // Game reminder handlers
@@ -16,6 +16,7 @@ export async function setupEventHandlers(eventBus: EventBus): Promise<void> {
   // Payment reminder handlers
   eventBus.subscribe('PaymentReminder12h', { handle: handlePaymentReminder12h });
   eventBus.subscribe('PaymentReminder24h', { handle: handlePaymentReminder24h });
+  eventBus.subscribe('SendPaymentReminders', { handle: handleSendPaymentReminders });
 
   // Player events
   eventBus.subscribe('PlayerJoined', { handle: handlePlayerJoined });
@@ -69,12 +70,18 @@ async function handleGameReminder24h(event: TypedDomainEvent) {
       userId: reg.userId,
       chatId: reg.user.telegramId!,
       message: `⏰ Напоминание: игра завтра в ${formatGameTimeForNotification(game.startsAt, getUserTimezone(reg.userId))}!\n🏟️ ${game.levelTag || 'Общий уровень'}\n💰 ${game.priceText || 'Бесплатно'}`,
-      type: 'game-reminder-24h'
+      type: 'game-reminder-24h',
+      gameId
     }));
 
   try {
-    await notificationService.sendBatch(notifications);
-    logger.info('Game reminder notifications sent', { gameId, count: notifications.length });
+    const result = await notificationService.sendBatch(notifications);
+    logger.info('Game reminder notifications sent', {
+      gameId,
+      total: notifications.length,
+      successful: result.successful,
+      failed: result.failed
+    });
   } catch (error) {
     logger.error('Failed to send game reminder notifications', { gameId, error: error instanceof Error ? error.message : 'Unknown error' });
   }
@@ -106,12 +113,18 @@ async function handleGameReminder2h(event: TypedDomainEvent) {
       userId: reg.userId,
       chatId: reg.user.telegramId!,
       message: `🚨 Через 2 часа игра!\n⏰ ${formatGameTimeForNotification(game.startsAt, getUserTimezone(reg.userId))}\n🏟️ ${game.levelTag || 'Общий уровень'}\n💰 ${game.priceText || 'Бесплатно'}`,
-      type: 'game-reminder-2h'
+      type: 'game-reminder-2h',
+      gameId
     }));
 
   try {
-    await notificationService.sendBatch(notifications);
-    logger.info('Game 2h reminder notifications sent', { gameId, count: notifications.length });
+    const result = await notificationService.sendBatch(notifications);
+    logger.info('Game 2h reminder notifications sent', {
+      gameId,
+      total: notifications.length,
+      successful: result.successful,
+      failed: result.failed
+    });
   } catch (error) {
     logger.error('Failed to send game 2h reminder notifications', { gameId, error: error instanceof Error ? error.message : 'Unknown error' });
   }
@@ -137,18 +150,30 @@ async function handlePaymentReminder12h(event: TypedDomainEvent) {
     return;
   }
 
+  // Дополнительная проверка: отправляем только если окно оплаты открыто
+  if (new Date() < game.startsAt) {
+    logger.info('Payment window not open yet, skipping reminder', { gameId, startsAt: game.startsAt });
+    return;
+  }
+
   const notifications = game.registrations
     .filter(reg => reg.user.telegramId)
     .map(reg => ({
       userId: reg.userId,
       chatId: reg.user.telegramId!,
       message: `💰 Напоминание: оплата за игру "${game.levelTag || 'Волейбол'}"\nОрганизатор: ${game.organizerId}\n💳 Пожалуйста, произведите оплату`,
-      type: 'payment-reminder-12h'
+      type: 'payment-reminder-12h',
+      gameId
     }));
 
   try {
-    await notificationService.sendBatch(notifications);
-    logger.info('Payment reminder 12h notifications sent', { gameId, count: notifications.length });
+    const result = await notificationService.sendBatch(notifications);
+    logger.info('Payment reminder 12h notifications sent', {
+      gameId,
+      total: notifications.length,
+      successful: result.successful,
+      failed: result.failed
+    });
   } catch (error) {
     logger.error('Failed to send payment reminder 12h notifications', { gameId, error: error instanceof Error ? error.message : 'Unknown error' });
   }
@@ -174,18 +199,30 @@ async function handlePaymentReminder24h(event: TypedDomainEvent) {
     return;
   }
 
+  // Дополнительная проверка: отправляем только если окно оплаты открыто
+  if (new Date() < game.startsAt) {
+    logger.info('Payment window not open yet, skipping reminder', { gameId, startsAt: game.startsAt });
+    return;
+  }
+
   const notifications = game.registrations
     .filter(reg => reg.user.telegramId)
     .map(reg => ({
       userId: reg.userId,
       chatId: reg.user.telegramId!,
       message: `⚠️ Последнее напоминание об оплате!\n💰 Игра "${game.levelTag || 'Волейбол'}"\nОрганизатор: ${game.organizerId}\n⏰ Просьба оплатить в ближайшее время`,
-      type: 'payment-reminder-24h'
+      type: 'payment-reminder-24h',
+      gameId
     }));
 
   try {
-    await notificationService.sendBatch(notifications);
-    logger.info('Payment reminder 24h notifications sent', { gameId, count: notifications.length });
+    const result = await notificationService.sendBatch(notifications);
+    logger.info('Payment reminder 24h notifications sent', {
+      gameId,
+      total: notifications.length,
+      successful: result.successful,
+      failed: result.failed
+    });
   } catch (error) {
     logger.error('Failed to send payment reminder 24h notifications', { gameId, error: error instanceof Error ? error.message : 'Unknown error' });
   }
@@ -217,7 +254,13 @@ async function handlePlayerJoined(event: TypedDomainEvent) {
   const message = `👤 Новый участник в игре!\n${user.name} - ${statusText}`;
 
   try {
-    await notificationService.sendMessage(game.organizer.user.telegramId, message, 'player-joined');
+    await notificationService.sendNotification({
+      userId: game.organizer.user.id,
+      chatId: game.organizer.user.telegramId,
+      message,
+      type: 'player-joined',
+      gameId
+    });
     logger.info('Player joined notification sent to organizer', { gameId, userId, organizerId: game.organizer.user.telegramId });
   } catch (error) {
     logger.error('Failed to send player joined notification', { gameId, userId, error: error instanceof Error ? error.message : 'Unknown error' });
@@ -245,7 +288,13 @@ async function handleWaitlistedPromoted(event: TypedDomainEvent) {
   const message = `🎉 Поздравляем! Вы продвинуты из листа ожидания!\n✅ Место подтверждено на игру ${gameTime}\n💰 Не забудьте оплатить участие`;
 
   try {
-    await notificationService.sendMessage(registration.user.telegramId, message, 'waitlist-promoted');
+    await notificationService.sendNotification({
+      userId: registration.userId,
+      chatId: registration.user.telegramId,
+      message,
+      type: 'waitlist-promoted',
+      gameId
+    });
     logger.info('Waitlist promotion notification sent', { gameId, userId, userTelegramId: registration.user.telegramId });
   } catch (error) {
     logger.error('Failed to send waitlist promotion notification', { gameId, userId, error: error instanceof Error ? error.message : 'Unknown error' });
@@ -277,9 +326,51 @@ async function handlePaymentMarked(event: TypedDomainEvent) {
   const message = `💰 Оплата получена!\n👤 ${user.name} отметил оплату за игру`;
 
   try {
-    await notificationService.sendMessage(game.organizer.user.telegramId, message, 'payment-marked');
+    await notificationService.sendNotification({
+      userId: game.organizer.user.id,
+      chatId: game.organizer.user.telegramId,
+      message,
+      type: 'payment-marked',
+      gameId
+    });
     logger.info('Payment marked notification sent to organizer', { gameId, userId, organizerId: game.organizer.user.telegramId });
   } catch (error) {
     logger.error('Failed to send payment marked notification', { gameId, userId, error: error instanceof Error ? error.message : 'Unknown error' });
+  }
+}
+
+async function handleSendPaymentReminders(event: TypedDomainEvent) {
+  if (event.type !== 'SendPaymentReminders') return;
+  const { gameId, unpaidRegistrations } = event.payload;
+  logger.info('Processing SendPaymentReminders', { gameId, count: unpaidRegistrations.length });
+
+  const game = await prisma.game.findUnique({ where: { id: gameId } });
+  if (!game) {
+    logger.warn('Game not found for payment reminders', { gameId });
+    return;
+  }
+
+  const message = `💰 Напоминание об оплате!\nИгра "${game.levelTag || 'Волейбол'}" завершена\nОрганизатор: ${game.organizerId}\n⏰ Пожалуйста, отметьте оплату командой /pay ${gameId}`;
+
+  const notifications = unpaidRegistrations
+    .filter(reg => reg.telegramId)
+    .map(reg => ({
+      userId: reg.userId,
+      chatId: reg.telegramId!,
+      message,
+      type: 'manual-payment-reminder',
+      gameId
+    }));
+
+  try {
+    const result = await notificationService.sendBatch(notifications);
+    logger.info('Manual payment reminders sent', {
+      gameId,
+      total: notifications.length,
+      successful: result.successful,
+      failed: result.failed
+    });
+  } catch (error) {
+    logger.error('Failed to send manual payment reminders', { gameId, error: error instanceof Error ? error.message : 'Unknown error' });
   }
 }

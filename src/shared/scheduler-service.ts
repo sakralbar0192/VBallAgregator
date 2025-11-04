@@ -74,6 +74,25 @@ export class SchedulerService {
     });
   }
 
+  async schedulePaymentReminder24h(gameId: string, startsAt: Date): Promise<void> {
+    const delay = startsAt.getTime() - Date.now() + 24 * 60 * 60 * 1000;
+    if (delay <= 0) return;
+
+    await this.paymentReminderQueue.add(
+      'payment-reminder-24h',
+      { gameId },
+      {
+        delay,
+        jobId: `payment-reminder-24h-${gameId}`,
+      }
+    );
+
+    logger.info('Scheduled payment 24h reminder', {
+      gameId,
+      scheduledFor: new Date(Date.now() + delay).toISOString()
+    });
+  }
+
   initializeWorkers(): void {
     // Game reminders worker
     const reminderWorker = new Worker(

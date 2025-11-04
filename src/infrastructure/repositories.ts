@@ -18,6 +18,18 @@ export interface RegistrationRepo {
 }
 
 export class PrismaGameRepo implements GameRepo {
+  /**
+   * Выполняет функцию в транзакции Prisma.
+   * Используется для обеспечения ACID-свойств при операциях с несколькими таблицами.
+   * @param fn - Функция, выполняемая в транзакции
+   * @returns Результат выполнения функции
+   */
+  /**
+   * Выполняет функцию в транзакции Prisma.
+   * Используется для обеспечения ACID-свойств при операциях с несколькими таблицами.
+   * @param fn - Функция, выполняемая в транзакции
+   * @returns Результат выполнения функции
+   */
   async transaction<T>(fn: () => Promise<T>): Promise<T> {
     return prisma.$transaction(fn);
   }

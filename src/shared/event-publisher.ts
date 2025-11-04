@@ -90,6 +90,9 @@ class NotificationService {
 const notificationService = new NotificationService(process.env.TELEGRAM_BOT_TOKEN!);
 
 // Кеш для данных пользователей (telegramId -> user data)
+// Используется для оптимизации запросов к БД при отправке уведомлений.
+// TTL: 5 минут - баланс между производительностью и актуальностью данных.
+// При изменении имени пользователя кеш автоматически очищается через TTL.
 const userCache = new Map<bigint, { id: string; name: string; telegramId: bigint }>();
 const CACHE_TTL = 5 * 60 * 1000; // 5 минут
 
@@ -100,7 +103,7 @@ async function getUserData(telegramId: bigint) {
   const user = await prisma.user.findUnique({ where: { telegramId } });
   if (user) {
     userCache.set(telegramId, user);
-    // Очистка кеша через TTL
+    // Очистка кеша через TTL для поддержания актуальности данных
     setTimeout(() => userCache.delete(telegramId), CACHE_TTL);
     return user;
   }

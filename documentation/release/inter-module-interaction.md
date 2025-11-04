@@ -4,11 +4,20 @@
 
 ### 1. Модуль `application`
 - **Функции:**
-  - `joinGame(gameId: string, userId: string)`: Позволяет пользователю присоединиться к игре.
+  - `joinGame(gameId: string, userId: string)`: Позволяет пользователю присоединиться к игре. Возвращает статус ('registered' или 'waitlisted').
   - `leaveGame(gameId: string, userId: string)`: Позволяет пользователю покинуть игру.
   - `markPayment(gameId: string, userId: string)`: Отмечает оплату для подтвержденного участника.
   - `createGame(data)`: Создает новую игру с заданными параметрами.
   - `closeGame(gameId: string)`: Закрывает игру.
+  - `finishGame(gameId: string)`: Завершает игру и планирует напоминания об оплате.
+  - `registerUser(telegramId: number, name: string)`: Регистрирует нового пользователя.
+  - `updateUserLevel(userId: string, levelTag?: string)`: Обновляет уровень игрока.
+  - `registerOrganizer(userId: string, title: string)`: Регистрирует пользователя как организатора.
+  - `linkPlayerToOrganizer(playerId: string, organizerId: string)`: Связывает игрока с организатором.
+  - `listGames()`: Возвращает список доступных игр.
+  - `scheduleGameReminders(gameId: string, startsAt: Date)`: Планирует напоминания о игре (24ч и 2ч).
+  - `schedulePaymentReminders(gameId: string, startsAt: Date)`: Планирует напоминания об оплате (12ч и 24ч).
+  - `sendPaymentReminders(gameId: string, organizerId: string)`: Отправляет напоминания об оплате всем участникам.
 
 ### 2. Модуль `domain`
 - **Функции:**
@@ -44,3 +53,17 @@ const newGame = await createGame({
   levelTag: 'beginner',
   priceText: '1000'
 });
+
+// Пример записи на игру
+const joinResult = await joinGame('game-uuid-123', 'user-uuid-456');
+console.log(joinResult.status); // 'registered' или 'waitlisted'
+
+// Пример отметки оплаты
+await markPayment('game-uuid-123', 'user-uuid-456');
+
+// Пример регистрации пользователя
+const { userId } = await registerUser(123456789, 'Иван Иванов');
+
+// Пример планирования напоминаний
+await scheduleGameReminders('game-uuid-123', new Date('2025-12-01T10:00:00Z'));
+```

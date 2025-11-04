@@ -52,6 +52,14 @@ export class GameApplicationService {
     private schedulerService: SchedulerService
   ) {}
 
+  /**
+   * Отмечает оплату за игру
+   * Проверяет бизнес-правила оплаты и обновляет статус регистрации
+   * @param command - Команда с gameId и userId
+   * @throws DomainError если оплата недоступна или игра не найдена
+   * @example
+   * await gameService.markPayment({ gameId: '123', userId: '456' });
+   */
   async markPayment(command: MarkPaymentCommand): Promise<void> {
     try {
       const { game, registration } = await this.gameDomainService
@@ -82,6 +90,16 @@ export class GameApplicationService {
     }
   }
 
+  /**
+   * Записывает игрока на игру
+   * Обрабатывает запись в основной состав или в лист ожидания
+   * @param command - Команда с gameId и userId
+   * @returns Статус записи ('registered' или 'waitlisted')
+   * @throws DomainError если игра не найдена или заполнена
+   * @example
+   * const result = await gameService.joinGame({ gameId: '123', userId: '456' });
+   * console.log(result.status); // 'registered' или 'waitlisted'
+   */
   async joinGame(command: JoinGameCommand): Promise<{ status: string }> {
     return await this.gameRepo.transaction(async () => {
       const result = await this.gameDomainService.processJoinGame(
@@ -105,6 +123,22 @@ export class GameApplicationService {
     });
   }
 
+  /**
+   * Создает новую игру
+   * Валидирует организатора и создает игру с планированием напоминаний
+   * @param command - Команда с параметрами игры
+   * @returns Созданная игра
+   * @throws DomainError если организатор не найден
+   * @example
+   * const game = await gameService.createGame({
+   *   organizerId: '123',
+   *   venueId: 'venue1',
+   *   startsAt: new Date('2025-12-01T10:00:00Z'),
+   *   capacity: 12,
+   *   levelTag: 'amateur',
+   *   priceText: '500 руб'
+   * });
+   */
   async createGame(command: CreateGameCommand): Promise<Game> {
     // Get organizer record to ensure it exists
     const organizer = await (this.gameRepo as any).getOrganizerByUserId(command.organizerId);

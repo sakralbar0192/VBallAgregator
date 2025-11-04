@@ -49,7 +49,7 @@ export class GameCreationWizard {
 
     // Шаг 2: выбор времени
     const timeButtons = [];
-    for (let hour = 9; hour <= 21; hour += 2) {
+    for (let hour = 9; hour <= 21; hour += 1) {
       const timeStr = `${hour.toString().padStart(2, '0')}:00`;
       timeButtons.push([{ text: timeStr, callback_data: `wizard_time_${hour}` }]);
     }
@@ -99,9 +99,9 @@ export class GameCreationWizard {
     await ctx.editMessageText(`📅 ${session.date.toLocaleDateString('ru-RU')} в ${session.date.getHours().toString().padStart(2, '0')}:00\n🎯 Уровень: ${level}\n\n🏟️ Выбери площадку:`, {
       reply_markup: {
         inline_keyboard: [
-          [{ text: 'Стадион "Волна"', callback_data: `wizard_venue_volna` }],
-          [{ text: 'СК "Олимп"', callback_data: `wizard_venue_olimp` }],
-          [{ text: 'Парк "Южный"', callback_data: `wizard_venue_south` }]
+          [{ text: '"Чайка"', callback_data: `wizard_venue_chaika` }],
+          [{ text: '"ФОК"', callback_data: `wizard_venue_fok` }],
+          [{ text: '5-ая школа', callback_data: `wizard_venue_5th_school` }]
         ]
       }
     });
@@ -115,37 +115,91 @@ export class GameCreationWizard {
       return;
     }
 
+    // Сохраняем venueKey в сессии
+    (session as any).venueKey = venueKey;
+
+    // Шаг 5: выбор вместимости (с default значением)
+    await ctx.editMessageText(`📅 ${session.date.toLocaleDateString('ru-RU')} в ${session.date.getHours().toString().padStart(2, '0')}:00\n🎯 Уровень: ${session.levelTag}\n🏟️ ${venueKey === 'chaika' ? '"Чайка"' : venueKey === 'fok' ? '"ФОК"' : '5-ая школа'}\n\n👥 Выбери вместимость игры:`, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '6 игроков', callback_data: `wizard_capacity_6` }],
+          [{ text: '8 игроков', callback_data: `wizard_capacity_8` }],
+          [{ text: '10 игроков', callback_data: `wizard_capacity_10` }],
+          [{ text: '12 игроков (по умолчанию)', callback_data: `wizard_capacity_12` }],
+          [{ text: '14 игроков', callback_data: `wizard_capacity_14` }],
+          [{ text: '16 игроков', callback_data: `wizard_capacity_16` }]
+        ]
+      }
+    });
+  }
+
+  static async handleCapacitySelection(ctx: Context, capacity: number): Promise<void> {
+    const telegramId = ctx.from!.id;
+    const session = this.sessions.get(telegramId);
+    if (!session || !session.date || !session.levelTag || !session.userId) {
+      await ctx.editMessageText('Сессия истекла. Начни заново с /newgame');
+      return;
+    }
+
+    session.capacity = capacity;
+
+    // Шаг 6: выбор цены
+    await ctx.editMessageText(`📅 ${session.date.toLocaleDateString('ru-RU')} в ${session.date.getHours().toString().padStart(2, '0')}:00\n🎯 Уровень: ${session.levelTag}\n🏟️ ${(session as any).venueKey === 'chaika' ? '"Чайка"' : (session as any).venueKey === 'fok' ? '"ФОК"' : '5-ая школа'}\n👥 Вместимость: ${capacity} игроков\n\n💰 Выбери стоимость игры:`, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: 'Бесплатно', callback_data: `wizard_price_free` }],
+          [{ text: '200₽', callback_data: `wizard_price_200` }],
+          [{ text: '300₽', callback_data: `wizard_price_300` }],
+          [{ text: '400₽', callback_data: `wizard_price_400` }],
+          [{ text: '500₽ (по умолчанию)', callback_data: `wizard_price_500` }],
+          [{ text: '600₽', callback_data: `wizard_price_600` }]
+        ]
+      }
+    });
+  }
+
+  static async handlePriceSelection(ctx: Context, price: string): Promise<void> {
+    const telegramId = ctx.from!.id;
+    const session = this.sessions.get(telegramId);
+    if (!session || !session.date || !session.levelTag || !session.userId || !session.capacity) {
+      await ctx.editMessageText('Сессия истекла. Начни заново с /newgame');
+      return;
+    }
+
     // Map venue keys to IDs
     const venueMap: Record<string, string> = {
-      volna: 'venue-volna-id',
-      olimp: 'venue-olimp-id',
-      south: 'venue-south-id'
+      chaika: 'venue-chaika-id',
+      fok: 'venue-fok-id',
+      "5th_school": 'venue-5th-school-id'
     };
 
+    const venueKey = (session as any).venueKey;
     const venueId = venueMap[venueKey];
     if (!venueId) {
       await ctx.editMessageText('Площадка не найдена');
       return;
     }
 
+    const priceText = price === 'free' ? 'Бесплатно' : `${price}₽`;
+
     try {
       const game = await createGame({
         organizerId: session.userId,
         venueId,
         startsAt: session.date,
-        capacity: 12,
+        capacity: session.capacity,
         levelTag: session.levelTag,
-        priceText: '500₽'
+        priceText
       });
 
       // Очищаем сессию
       this.sessions.delete(telegramId);
 
-      const venueName = venueKey === 'volna' ? 'Стадион "Волна"' :
-                       venueKey === 'olimp' ? 'СК "Олимп"' : 'Парк "Южный"';
+      const venueName = venueKey === 'chaika' ? '"Чайка"' :
+                        venueKey === 'fok' ? '"ФОК"' : '5-ая школа';
 
       await ctx.editMessageText(
-        `✅ Игра создана!\n\n📅 ${formatGameTimeForNotification(session.date)}\n🎯 Уровень: ${session.levelTag}\n🏟️ ${venueName}\n💰 500₽\n\nID игры: \`${game.id}\`\n\nРасскажи друзьям: \`/join ${game.id}\``,
+        `✅ Игра создана!\n\n📅 ${formatGameTimeForNotification(session.date)}\n🎯 Уровень: ${session.levelTag}\n🏟️ ${venueName}\n👥 Вместимость: ${session.capacity} игроков\n💰 ${priceText}\n\nID игры: \`${game.id}\`\n\nРасскажи друзьям: \`/join ${game.id}\``,
         { parse_mode: 'Markdown' }
       );
     } catch (error: any) {
@@ -185,4 +239,6 @@ interface GameCreationSession {
   userId: string;
   date?: Date;
   levelTag?: string;
+  venueKey?: string;
+  capacity?: number;
 }

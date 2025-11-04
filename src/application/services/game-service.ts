@@ -53,21 +53,33 @@ export class GameApplicationService {
   ) {}
 
   async markPayment(command: MarkPaymentCommand): Promise<void> {
-    const { game, registration } = await this.gameDomainService
-      .validatePaymentMarking(command.gameId, command.userId);
+    try {
+      const { game, registration } = await this.gameDomainService
+        .validatePaymentMarking(command.gameId, command.userId);
 
-    // Доменная логика
-    registration.markPaid(game);
+      // Доменная логика
+      registration.markPaid(game);
 
-    // Персистенция
-    await this.registrationRepo.upsert(registration);
+      // Персистенция
+      await this.registrationRepo.upsert(registration);
 
-    // События - отложенная обработка через event bus
-    await this.eventBus.publish({
-      type: 'PaymentMarked',
-      payload: { gameId: command.gameId, userId: command.userId },
-      occurredAt: new Date(),
-    });
+      // События - отложенная обработка через event bus
+      await this.eventBus.publish({
+        type: 'PaymentMarked',
+        payload: { gameId: command.gameId, userId: command.userId },
+        occurredAt: new Date(),
+      });
+    } catch (error: any) {
+      // Публикуем событие об ошибке оплаты
+      if (error.code === 'PAYMENT_WINDOW_NOT_OPEN') {
+        await this.eventBus.publish({
+          type: 'PaymentAttemptRejectedEarly',
+          payload: { gameId: command.gameId, userId: command.userId },
+          occurredAt: new Date(),
+        });
+      }
+      throw error;
+    }
   }
 
   async joinGame(command: JoinGameCommand): Promise<{ status: string }> {

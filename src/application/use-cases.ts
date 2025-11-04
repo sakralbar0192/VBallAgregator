@@ -254,6 +254,7 @@
    */
   export async function listGames() {
     const games = await prisma.game.findMany({
+      where: { status: 'open' },
       orderBy: { startsAt: 'asc' }
     });
 

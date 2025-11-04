@@ -7,7 +7,7 @@ import { prisma } from './infrastructure/prisma.js';
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN!);
 
 // Rate limiting: 2 messages per 1 second per user
-const rateLimit = require('telegraf-ratelimit');
+import rateLimit from 'telegraf-ratelimit';
 const limitConfig = {
   in: 2,        // 2 сообщения
   out: 1,       // за 1 секунду
@@ -141,6 +141,16 @@ bot.action(/^wizard_level_(.+)$/, async (ctx: any) => {
 bot.action(/^wizard_venue_(.+)$/, async (ctx: any) => {
   const venueKey = ctx.match[1];
   await GameCreationWizard.handleVenueSelection(ctx, venueKey);
+});
+
+bot.action(/^wizard_capacity_(\d+)$/, async (ctx: any) => {
+  const capacity = parseInt(ctx.match[1]);
+  await GameCreationWizard.handleCapacitySelection(ctx, capacity);
+});
+
+bot.action(/^wizard_price_(.+)$/, async (ctx: any) => {
+  const price = ctx.match[1];
+  await GameCreationWizard.handlePriceSelection(ctx, price);
 });
 
 bot.on('text', async (ctx) => {

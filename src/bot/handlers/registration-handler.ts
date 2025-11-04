@@ -20,16 +20,18 @@ export class RegistrationHandler {
   }
 
   async handleRolePlayer(ctx: Context): Promise<void> {
-    await ctx.editMessageText('Ты выбрал роль игрока. Теперь оцени свой уровень:', {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: 'Новичок', callback_data: 'level_novice' }],
-          [{ text: 'Любитель', callback_data: 'level_amateur' }],
-          [{ text: 'Опытный', callback_data: 'level_experienced' }],
-          [{ text: 'Профи', callback_data: 'level_pro' }]
-        ]
-      }
-    });
+    if (ctx.callbackQuery && 'message' in ctx.callbackQuery) {
+      await ctx.editMessageText('Ты выбрал роль игрока. Теперь оцени свой уровень:', {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: 'Новичок', callback_data: 'level_novice' }],
+            [{ text: 'Любитель', callback_data: 'level_amateur' }],
+            [{ text: 'Опытный', callback_data: 'level_experienced' }],
+            [{ text: 'Профи', callback_data: 'level_pro' }]
+          ]
+        }
+      });
+    }
   }
 
   async handleLevelSelection(ctx: Context, level: string): Promise<void> {
@@ -37,12 +39,17 @@ export class RegistrationHandler {
 
     const user = await prisma.user.findUnique({ where: { telegramId } });
     if (!user || !user.id) {
-      return ctx.editMessageText('Пользователь не найден. Начни с команды /start');
+      if (ctx.callbackQuery && 'message' in ctx.callbackQuery) {
+        await ctx.editMessageText('Пользователь не найден. Начни с команды /start');
+      }
+      return;
     }
 
     await updateUserLevel(user.id, level);
 
-    await ctx.editMessageText('Отлично! Теперь ты можешь искать игры командой /games');
+    if (ctx.callbackQuery && 'message' in ctx.callbackQuery) {
+      await ctx.editMessageText('Отлично! Теперь ты можешь искать игры командой /games');
+    }
   }
 
   async handleRoleOrganizer(ctx: Context): Promise<void> {
@@ -50,11 +57,16 @@ export class RegistrationHandler {
 
     const user = await prisma.user.findUnique({ where: { telegramId } });
     if (!user || !user.id) {
-      return ctx.editMessageText('Пользователь не найден. Начни с команды /start');
+      if (ctx.callbackQuery && 'message' in ctx.callbackQuery) {
+        await ctx.editMessageText('Пользователь не найден. Начни с команды /start');
+      }
+      return;
     }
 
     await registerOrganizer(user.id, ctx.from!.first_name);
 
-    await ctx.editMessageText('Ты зарегистрирован как организатор! Создай игру командой /newgame');
+    if (ctx.callbackQuery && 'message' in ctx.callbackQuery) {
+      await ctx.editMessageText('Ты зарегистрирован как организатор! Создай игру командой /newgame');
+    }
   }
 }

@@ -8,7 +8,7 @@ export interface AppConfig {
     host: string;
     port: number;
     password?: string;
-    maxRetriesPerRequest: number;
+    maxRetriesPerRequest: number | null;
   };
   telegram: {
     botToken: string;
@@ -41,7 +41,7 @@ function loadConfig(): AppConfig {
       host: process.env.REDIS_HOST || 'localhost',
       port: parseInt(process.env.REDIS_PORT || '6379'),
       password: process.env.REDIS_PASSWORD,
-      maxRetriesPerRequest: 3,
+      maxRetriesPerRequest: null,
     },
     telegram: {
       botToken: process.env.TELEGRAM_BOT_TOKEN!,

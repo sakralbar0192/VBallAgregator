@@ -7,6 +7,7 @@ export type DomainEvent =
   | { type: 'PlayerJoined'; payload: { gameId: string; userId: string; status: string } }
   | { type: 'WaitlistedPromoted'; payload: { gameId: string; userId: string } }
   | { type: 'PaymentMarked'; payload: { gameId: string; userId: string } }
+  | { type: 'PaymentAttemptRejectedEarly'; payload: { gameId: string; userId: string } }
   | { type: 'RegistrationCanceled'; payload: { gameId: string; userId: string } }
   | { type: 'GameClosed'; payload: { gameId: string } }
   | { type: 'PlayerLinkedToOrganizer'; payload: { playerId: string; organizerId: string; playerName: string } };

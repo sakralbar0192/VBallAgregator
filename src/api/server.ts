@@ -1,5 +1,4 @@
 import Fastify from 'fastify';
-import { config } from '../shared/config.js';
 import { healthRoutes } from './health-endpoint.js';
 import { logger } from '../shared/logger.js';
 

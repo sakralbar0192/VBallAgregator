@@ -49,7 +49,11 @@ export class CommandHandlers {
         : 'Лист ожидания ⏳ (сообщим, если место освободится)';
       await ctx.reply(message);
     } catch (error: any) {
-      await ctx.reply(ErrorHandler.mapToUserMessage(error));
+      if (error.code === 'ALREADY_REGISTERED') {
+        await ctx.reply('Вы уже зарегистрированы на эту игру');
+      } else {
+        await ctx.reply(ErrorHandler.mapToUserMessage(error));
+      }
     }
   }
 
@@ -91,7 +95,11 @@ export class CommandHandlers {
       await markPayment(gameId, user.id!);
       await ctx.reply('Оплата отмечена 💰 Спасибо!');
     } catch (error: any) {
-      await ctx.reply(ErrorHandler.mapToUserMessage(error));
+      if (error.code === 'PAYMENT_WINDOW_NOT_OPEN') {
+        await ctx.reply('Окно оплаты еще не открыто');
+      } else {
+        await ctx.reply(ErrorHandler.mapToUserMessage(error));
+      }
     }
   }
 

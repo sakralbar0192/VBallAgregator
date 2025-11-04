@@ -107,7 +107,7 @@ async function getUserData(telegramId: bigint) {
 }
 
 // Обработчики событий для уведомлений
-async function handleGameReminder24h(event: DomainEvent) {
+async function handleGameReminder24h(event: Extract<DomainEvent, { type: 'GameReminder24h' }>) {
   const { gameId } = event.payload;
   logger.info('Processing GameReminder24h', { gameId });
 
@@ -134,7 +134,7 @@ async function handleGameReminder24h(event: DomainEvent) {
   }
 }
 
-async function handleGameReminder2h(event: DomainEvent) {
+async function handleGameReminder2h(event: Extract<DomainEvent, { type: 'GameReminder2h' }>) {
   const { gameId } = event.payload;
   logger.info('Processing GameReminder2h', { gameId });
 
@@ -161,7 +161,7 @@ async function handleGameReminder2h(event: DomainEvent) {
   }
 }
 
-async function handlePaymentReminder12h(event: DomainEvent) {
+async function handlePaymentReminder12h(event: Extract<DomainEvent, { type: 'PaymentReminder12h' }>) {
   const { gameId } = event.payload;
   logger.info('Processing PaymentReminder12h', { gameId });
 
@@ -186,7 +186,7 @@ async function handlePaymentReminder12h(event: DomainEvent) {
   }
 }
 
-async function handlePaymentReminder24h(event: DomainEvent) {
+async function handlePaymentReminder24h(event: Extract<DomainEvent, { type: 'PaymentReminder24h' }>) {
   const { gameId } = event.payload;
   logger.info('Processing PaymentReminder24h', { gameId });
 
@@ -211,7 +211,7 @@ async function handlePaymentReminder24h(event: DomainEvent) {
   }
 }
 
-async function handlePlayerJoined(event: DomainEvent) {
+async function handlePlayerJoined(event: Extract<DomainEvent, { type: 'PlayerJoined' }>) {
   const { gameId, userId, status } = event.payload;
   logger.info('Processing PlayerJoined', { gameId, userId, status });
 
@@ -232,7 +232,7 @@ async function handlePlayerJoined(event: DomainEvent) {
   await notificationService.sendMessage(game.organizer.user.telegramId, message);
 }
 
-async function handleWaitlistedPromoted(event: DomainEvent) {
+async function handleWaitlistedPromoted(event: Extract<DomainEvent, { type: 'WaitlistedPromoted' }>) {
   const { gameId, userId } = event.payload;
   logger.info('Processing WaitlistedPromoted', { gameId, userId });
 
@@ -251,7 +251,7 @@ async function handleWaitlistedPromoted(event: DomainEvent) {
   await notificationService.sendMessage(registration.user.telegramId, message);
 }
 
-async function handlePaymentMarked(event: DomainEvent) {
+async function handlePaymentMarked(event: Extract<DomainEvent, { type: 'PaymentMarked' }>) {
   const { gameId, userId } = event.payload;
   logger.info('Processing PaymentMarked', { gameId, userId });
 
@@ -272,13 +272,13 @@ async function handlePaymentMarked(event: DomainEvent) {
 }
 
 // Подписываемся на все события уведомлений
-eventPublisher.subscribe('GameReminder24h', handleGameReminder24h);
-eventPublisher.subscribe('GameReminder2h', handleGameReminder2h);
-eventPublisher.subscribe('PaymentReminder12h', handlePaymentReminder12h);
-eventPublisher.subscribe('PaymentReminder24h', handlePaymentReminder24h);
-eventPublisher.subscribe('PlayerJoined', handlePlayerJoined);
-eventPublisher.subscribe('WaitlistedPromoted', handleWaitlistedPromoted);
-eventPublisher.subscribe('PaymentMarked', handlePaymentMarked);
+eventPublisher.subscribe('GameReminder24h', handleGameReminder24h as (event: DomainEvent) => Promise<void>);
+eventPublisher.subscribe('GameReminder2h', handleGameReminder2h as (event: DomainEvent) => Promise<void>);
+eventPublisher.subscribe('PaymentReminder12h', handlePaymentReminder12h as (event: DomainEvent) => Promise<void>);
+eventPublisher.subscribe('PaymentReminder24h', handlePaymentReminder24h as (event: DomainEvent) => Promise<void>);
+eventPublisher.subscribe('PlayerJoined', handlePlayerJoined as (event: DomainEvent) => Promise<void>);
+eventPublisher.subscribe('WaitlistedPromoted', handleWaitlistedPromoted as (event: DomainEvent) => Promise<void>);
+eventPublisher.subscribe('PaymentMarked', handlePaymentMarked as (event: DomainEvent) => Promise<void>);
 
 export function evt<T extends DomainEvent>(type: T['type'], payload: T['payload']): T {
   return {
@@ -286,5 +286,5 @@ export function evt<T extends DomainEvent>(type: T['type'], payload: T['payload'
     occurredAt: new Date(),
     id: uuid(),
     payload
-  } as T;
+  } as unknown as T;
 }

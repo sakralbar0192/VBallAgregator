@@ -44,6 +44,7 @@ async function getUserData(telegramId: bigint) {
 }
 
 async function handleGameReminder24h(event: TypedDomainEvent) {
+  if (event.type !== 'GameReminder24h') return;
   const { gameId } = event.payload;
   logger.info('Processing GameReminder24h', { gameId });
 
@@ -80,6 +81,7 @@ async function handleGameReminder24h(event: TypedDomainEvent) {
 }
 
 async function handleGameReminder2h(event: TypedDomainEvent) {
+  if (event.type !== 'GameReminder2h') return;
   const { gameId } = event.payload;
   logger.info('Processing GameReminder2h', { gameId });
 
@@ -116,6 +118,7 @@ async function handleGameReminder2h(event: TypedDomainEvent) {
 }
 
 async function handlePaymentReminder12h(event: TypedDomainEvent) {
+  if (event.type !== 'PaymentReminder12h') return;
   const { gameId } = event.payload;
   logger.info('Processing PaymentReminder12h', { gameId });
 
@@ -152,6 +155,7 @@ async function handlePaymentReminder12h(event: TypedDomainEvent) {
 }
 
 async function handlePaymentReminder24h(event: TypedDomainEvent) {
+  if (event.type !== 'PaymentReminder24h') return;
   const { gameId } = event.payload;
   logger.info('Processing PaymentReminder24h', { gameId });
 

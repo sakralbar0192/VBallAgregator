@@ -16,7 +16,7 @@ export class GameDomainService {
 
     // Check if payment window is open
     if (!game.isPaymentWindowOpen) {
-      throw new DomainError('PAYMENT_WINDOW_CLOSED', 'Окно оплаты еще не открыто');
+      throw new DomainError('PAYMENT_WINDOW_NOT_OPEN', 'Окно оплаты еще не открыто');
     }
 
     const registration = await this.registrationRepo.get(gameId, userId);
@@ -32,8 +32,17 @@ export class GameDomainService {
     const game = await this.gameRepo.findById(gameId);
     if (!game) throw new DomainError('NOT_FOUND', 'Игра не найдена');
 
+    // Проверяем статус игры
+    if (game.status !== 'open') {
+      throw new DomainError('GAME_NOT_OPEN', 'Игра не открыта для записи');
+    }
+
     const confirmedCount = await this.gameRepo.countConfirmed(gameId);
     const existing = await this.registrationRepo.get(gameId, userId);
+
+    if (existing && existing.status === RegStatus.confirmed) {
+      throw new DomainError('ALREADY_REGISTERED', 'Вы уже зарегистрированы на эту игру');
+    }
 
     if (existing) {
       return { status: existing.status };

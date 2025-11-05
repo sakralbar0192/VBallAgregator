@@ -5,11 +5,11 @@ import { CommandHandlers } from './bot/command-handlers.js';
 import { prisma } from './infrastructure/prisma.js';
 import { LoggerFactory } from './shared/layer-logger.js';
 import { LOG_MESSAGES } from './shared/logging-messages.js';
+import { ValidationError, BusinessRuleError, SystemError } from './domain/errors/index.js';
+import rateLimit from 'telegraf-ratelimit';
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN!);
 
-// Rate limiting: 2 messages per 1 second per user
-import rateLimit from 'telegraf-ratelimit';
 const limitConfig = {
   in: 2,        // 2 сообщения
   out: 1,       // за 1 секунду
@@ -33,7 +33,7 @@ bot.start(async (ctx) => {
   const botLogger = LoggerFactory.bot('start-handler');
 
   botLogger.info('handleUserStart', LOG_MESSAGES.BOT.START_COMMAND_INITIATED,
-   { telegramId: Number(telegramId), firstName: ctx.from.first_name },
+   { telegramId, name },
    { correlationId }
  );
 
@@ -865,6 +865,34 @@ bot.on('text', async (ctx) => {
  * @param ctx - Контекст Telegraf
  */
 bot.catch((err, ctx) => {
-  console.error('Bot error:', err);
-  ctx.reply('Произошла ошибка. Попробуй позже.');
+  const correlationId = `bot_${ctx.from?.id || 'unknown'}_${Date.now()}`;
+
+  if (err instanceof ValidationError) {
+    // Ошибки валидации - показываем пользователю что исправить
+    ctx.reply(
+      `❌ ${err.getUserMessage()}\n\n` +
+      `Исправьте данные и попробуйте снова.`,
+      { parse_mode: 'Markdown' }
+    );
+    return;
+  }
+
+  if (err instanceof BusinessRuleError) {
+    // Ошибки бизнес-правил - объясняем почему нельзя
+    ctx.reply(`❌ ${err.getUserMessage()}`);
+    return;
+  }
+
+  if (err instanceof SystemError) {
+    // Системные ошибки - предлагаем повторить
+    ctx.reply(
+      `⚠️ ${err.getUserMessage()}\n\n` +
+      `Попробуйте повторить операцию через несколько минут.`
+    );
+    return;
+  }
+
+  // Неожиданные ошибки - логируем и показываем generic сообщение
+  console.error('Bot error:', err, { correlationId, ctx: ctx.update });
+  ctx.reply('Произошла неожиданная ошибка. Попробуйте позже.');
 });

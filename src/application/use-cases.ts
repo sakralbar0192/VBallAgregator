@@ -6,6 +6,14 @@
   import { LoggerFactory } from '../shared/layer-logger.js';
   import { LOG_MESSAGES } from '../shared/logging-messages.js';
   import { DomainError } from '../domain/errors.js';
+  import { InputValidator } from '../shared/input-validator.js';
+  import { ValidationError } from '../domain/errors/validation-error.js';
+  import {
+    GameNotOpenError,
+    GameAlreadyStartedError,
+    CapacityReachedError,
+    AlreadyRegisteredError
+  } from '../domain/errors/game-errors.js';
   import { prisma } from '../infrastructure/prisma.js';
   import { GameApplicationService } from './services/game-service.js';
   import { UserApplicationService } from './services/user-service.js';
@@ -37,13 +45,10 @@
    * @returns {Promise<{ status: RegStatus }>} - Статус регистрации пользователя.
    * @throws {DomainError} - Если игра не найдена или пользователь не может присоединиться.
    */
-  export async function joinGame(gameId: string, userId: string) {
-    if (!gameId?.trim()) {
-      throw new DomainError('INVALID_INPUT', 'gameId не может быть пустым');
-    }
-    if (!userId?.trim()) {
-      throw new DomainError('INVALID_INPUT', 'userId не может быть пустым');
-    }
+   export async function joinGame(gameId: string, userId: string) {
+     // Валидация входных данных
+     InputValidator.validateRequired(gameId, 'gameId');
+     InputValidator.validateRequired(userId, 'userId');
 
     const useCaseLogger = LoggerFactory.useCase('joinGame');
     const correlationId = `join_${userId}_${gameId}_${Date.now()}`;
@@ -66,7 +71,7 @@
     // Проверить, что игра еще не началась
     // NOTE: Время игры хранится в UTC, сравниваем с текущим временем в UTC
     if (game.startsAt <= new Date()) {
-      throw new DomainError('GAME_ALREADY_STARTED', 'Игра уже началась');
+      throw new GameAlreadyStartedError(gameId, game.startsAt);
     }
 
     // Если игра создана недавно (в течение последних 2 часов), проверить, является ли пользователь подтвержденным игроком организатора
@@ -110,12 +115,9 @@
    * @returns {Promise<{ ok: boolean }>} - Успех операции.
    */
   export async function leaveGame(gameId: string, userId: string) {
-    if (!gameId?.trim()) {
-      throw new DomainError('INVALID_INPUT', 'gameId не может быть пустым');
-    }
-    if (!userId?.trim()) {
-      throw new DomainError('INVALID_INPUT', 'userId не может быть пустым');
-    }
+    // Валидация входных данных
+    InputValidator.validateRequired(gameId, 'gameId');
+    InputValidator.validateRequired(userId, 'userId');
 
     logger.info('leaveGame called', { gameId, userId });
 
@@ -149,12 +151,9 @@
    * @throws {DomainError} - Если игра не найдена или окно оплаты еще не открыто.
    */
   export async function markPayment(gameId: string, userId: string) {
-    if (!gameId?.trim()) {
-      throw new DomainError('INVALID_INPUT', 'gameId не может быть пустым');
-    }
-    if (!userId?.trim()) {
-      throw new DomainError('INVALID_INPUT', 'userId не может быть пустым');
-    }
+    // Валидация входных данных
+    InputValidator.validateRequired(gameId, 'gameId');
+    InputValidator.validateRequired(userId, 'userId');
 
     logger.info('markPayment called', { gameId, userId });
 
@@ -170,9 +169,8 @@
    * @returns {Promise<void>} - Успех операции.
    */
   export async function scheduleGameReminders(gameId: string) {
-    if (!gameId?.trim()) {
-      throw new DomainError('INVALID_INPUT', 'gameId не может быть пустым');
-    }
+    // Валидация входных данных
+    InputValidator.validateRequired(gameId, 'gameId');
 
     logger.info('scheduleGameReminders called', { gameId });
 
@@ -192,9 +190,8 @@
    * @returns {Promise<void>} - Успех операции.
    */
   export async function schedulePaymentReminders(gameId: string) {
-    if (!gameId?.trim()) {
-      throw new DomainError('INVALID_INPUT', 'gameId не может быть пустым');
-    }
+    // Валидация входных данных
+    InputValidator.validateRequired(gameId, 'gameId');
 
     logger.info('schedulePaymentReminders called', { gameId });
 
@@ -215,12 +212,9 @@
    * @returns {Promise<{ sent: number }>} - Количество отправленных напоминаний.
    */
   export async function sendPaymentReminders(gameId: string, organizerId: string | undefined) {
-    if (!gameId?.trim()) {
-      throw new DomainError('INVALID_INPUT', 'gameId не может быть пустым');
-    }
-    if (!organizerId) {
-      throw new DomainError('INVALID_INPUT', 'organizerId не может быть пустым');
-    }
+    // Валидация входных данных
+    InputValidator.validateRequired(gameId, 'gameId');
+    InputValidator.validateRequired(organizerId, 'organizerId');
 
     logger.info('sendPaymentReminders called', { gameId, organizerId });
 
@@ -277,17 +271,13 @@
     levelTag?: string;
     priceText?: string;
   }) {
-    if (!data.organizerId?.trim()) {
-      throw new DomainError('INVALID_INPUT', 'organizerId не может быть пустым');
-    }
-    if (!data.venueId?.trim()) {
-      throw new DomainError('INVALID_INPUT', 'venueId не может быть пустым');
-    }
-    if (!data.startsAt || isNaN(data.startsAt.getTime())) {
-      throw new DomainError('INVALID_INPUT', 'startsAt должен быть валидной датой');
-    }
-    if (data.capacity <= 0 || data.capacity > 100) {
-      throw new DomainError('INVALID_INPUT', 'capacity должен быть от 1 до 100');
+    // Валидация входных данных
+    InputValidator.validateRequired(data.organizerId, 'organizerId');
+    InputValidator.validateRequired(data.venueId, 'venueId');
+    InputValidator.validateDate(data.startsAt, 'startsAt');
+    InputValidator.validatePositiveNumber(data.capacity, 'capacity');
+    if (data.capacity > 100) {
+      throw new ValidationError('capacity', data.capacity, 'max_100');
     }
 
     logger.info('createGame called', { organizerId: data.organizerId, venueId: data.venueId, capacity: data.capacity });
@@ -303,12 +293,10 @@
    * @returns {Promise<{ userId: string }>} - ID созданного пользователя.
    */
   export async function registerUser(telegramId: number | bigint, name: string): Promise<{ userId: string; }> {
-    if (telegramId <= 0) {
-      throw new DomainError('INVALID_INPUT', 'telegramId должен быть положительным числом');
-    }
-    if (!name?.trim()) {
-      throw new DomainError('INVALID_INPUT', 'name не может быть пустым');
-    }
+    // Валидация входных данных
+    InputValidator.validatePositiveNumber(Number(telegramId), 'telegramId');
+    InputValidator.validateRequired(name, 'name');
+    InputValidator.validateStringLength(name, 'name', 1, 100);
 
     const useCaseLogger = LoggerFactory.useCase('registerUser');
     const correlationId = `register_${telegramId}_${Date.now()}`;
@@ -344,9 +332,8 @@
    * @returns {Promise<{ ok: boolean }>} - Успех операции.
    */
   export async function updateUserLevel(userId: string, levelTag: string | undefined) {
-    if (!userId?.trim()) {
-      throw new DomainError('INVALID_INPUT', 'userId не может быть пустым');
-    }
+    // Валидация входных данных
+    InputValidator.validateRequired(userId, 'userId');
 
     logger.info('updateUserLevel called', { userId, levelTag });
 
@@ -361,12 +348,10 @@
    * @returns {Promise<{ ok: boolean }>} - Успех операции.
    */
   export async function registerOrganizer(userId: string, title: string) {
-    if (!userId?.trim()) {
-      throw new DomainError('INVALID_INPUT', 'userId не может быть пустым');
-    }
-    if (!title?.trim()) {
-      throw new DomainError('INVALID_INPUT', 'title не может быть пустым');
-    }
+    // Валидация входных данных
+    InputValidator.validateRequired(userId, 'userId');
+    InputValidator.validateRequired(title, 'title');
+    InputValidator.validateStringLength(title, 'title', 1, 100);
 
     logger.info('registerOrganizer called', { userId, title });
 
@@ -436,12 +421,9 @@
    * @returns {Promise<void>} - Успех операции.
    */
   export async function closeGame(gameId: string, organizerId: string) {
-    if (!gameId?.trim()) {
-      throw new DomainError('INVALID_INPUT', 'gameId не может быть пустым');
-    }
-    if (!organizerId?.trim()) {
-      throw new DomainError('INVALID_INPUT', 'organizerId не может быть пустым');
-    }
+    // Валидация входных данных
+    InputValidator.validateRequired(gameId, 'gameId');
+    InputValidator.validateRequired(organizerId, 'organizerId');
 
     logger.info('closeGame called', { gameId, organizerId });
 
@@ -465,9 +447,8 @@
    * @returns {Promise<void>} - Успех операции.
    */
   export async function finishGame(gameId: string) {
-    if (!gameId?.trim()) {
-      throw new DomainError('INVALID_INPUT', 'gameId не может быть пустым');
-    }
+    // Валидация входных данных
+    InputValidator.validateRequired(gameId, 'gameId');
 
     logger.info('finishGame called', { gameId });
 
@@ -484,11 +465,10 @@
    * @returns {Promise<{ ok: boolean }>} - Успех операции.
    */
   export async function selectOrganizers(playerId: string, organizerIds: string[]) {
-    if (!playerId?.trim()) {
-      throw new DomainError('INVALID_INPUT', 'playerId не может быть пустым');
-    }
+    // Валидация входных данных
+    InputValidator.validateRequired(playerId, 'playerId');
     if (!organizerIds?.length) {
-      throw new DomainError('INVALID_INPUT', 'organizerIds не может быть пустым');
+      throw new ValidationError('organizerIds', organizerIds, 'not_empty_array');
     }
 
     logger.info('selectOrganizers called', { playerId, organizerIds });
@@ -535,12 +515,9 @@
    * @returns {Promise<{ ok: boolean }>} - Успех операции.
    */
   export async function confirmPlayer(organizerId: string, playerId: string) {
-    if (!organizerId?.trim()) {
-      throw new DomainError('INVALID_INPUT', 'organizerId не может быть пустым');
-    }
-    if (!playerId?.trim()) {
-      throw new DomainError('INVALID_INPUT', 'playerId не может быть пустым');
-    }
+    // Валидация входных данных
+    InputValidator.validateRequired(organizerId, 'organizerId');
+    InputValidator.validateRequired(playerId, 'playerId');
 
     logger.info('confirmPlayer called', { organizerId, playerId });
 
@@ -585,12 +562,9 @@
    * @returns {Promise<{ ok: boolean }>} - Успех операции.
    */
   export async function rejectPlayer(organizerId: string, playerId: string) {
-    if (!organizerId?.trim()) {
-      throw new DomainError('INVALID_INPUT', 'organizerId не может быть пустым');
-    }
-    if (!playerId?.trim()) {
-      throw new DomainError('INVALID_INPUT', 'playerId не может быть пустым');
-    }
+    // Валидация входных данных
+    InputValidator.validateRequired(organizerId, 'organizerId');
+    InputValidator.validateRequired(playerId, 'playerId');
 
     logger.info('rejectPlayer called', { organizerId, playerId });
 
@@ -632,9 +606,8 @@
    * @returns {Promise<Array>} - Список игроков.
    */
   export async function getOrganizerPlayers(organizerId: string, status?: string) {
-    if (!organizerId?.trim()) {
-      throw new DomainError('INVALID_INPUT', 'organizerId не может быть пустым');
-    }
+    // Валидация входных данных
+    InputValidator.validateRequired(organizerId, 'organizerId');
 
     logger.info('getOrganizerPlayers called', { organizerId, status });
 
@@ -738,15 +711,10 @@
    * @returns {Promise<{ ok: boolean }>} - Успех операции.
    */
   export async function respondToGameInvitation(gameId: string, playerId: string, response: string) {
-    if (!gameId?.trim()) {
-      throw new DomainError('INVALID_INPUT', 'gameId не может быть пустым');
-    }
-    if (!playerId?.trim()) {
-      throw new DomainError('INVALID_INPUT', 'playerId не может быть пустым');
-    }
-    if (!['yes', 'no', 'ignored'].includes(response)) {
-      throw new DomainError('INVALID_INPUT', 'response должен быть "yes", "no" или "ignored"');
-    }
+    // Валидация входных данных
+    InputValidator.validateRequired(gameId, 'gameId');
+    InputValidator.validateRequired(playerId, 'playerId');
+    InputValidator.validateEnum(response, 'response', ['yes', 'no', 'ignored']);
 
     logger.info('respondToGameInvitation called', { gameId, playerId, response });
 
@@ -808,9 +776,8 @@
    * @returns {Promise<void>} - Успех операции.
    */
   export async function notifyConfirmedPlayersAboutGame(gameId: string) {
-    if (!gameId?.trim()) {
-      throw new DomainError('INVALID_INPUT', 'gameId не может быть пустым');
-    }
+    // Валидация входных данных
+    InputValidator.validateRequired(gameId, 'gameId');
 
     logger.info('notifyConfirmedPlayersAboutGame called', { gameId });
 
@@ -872,9 +839,8 @@
    * @returns {Promise<void>} - Успех операции.
    */
   export async function checkPriorityWindowExpiration(gameId: string) {
-    if (!gameId?.trim()) {
-      throw new DomainError('INVALID_INPUT', 'gameId не может быть пустым');
-    }
+    // Валидация входных данных
+    InputValidator.validateRequired(gameId, 'gameId');
 
     logger.info('checkPriorityWindowExpiration called', { gameId });
 
@@ -912,12 +878,9 @@
    * @returns {Promise<{ ok: boolean }>} - Успех операции.
    */
   export async function linkPlayerToOrganizer(playerId: string, organizerId: string) {
-    if (!playerId?.trim()) {
-      throw new DomainError('INVALID_INPUT', 'playerId не может быть пустым');
-    }
-    if (!organizerId?.trim()) {
-      throw new DomainError('INVALID_INPUT', 'organizerId не может быть пустым');
-    }
+    // Валидация входных данных
+    InputValidator.validateRequired(playerId, 'playerId');
+    InputValidator.validateRequired(organizerId, 'organizerId');
 
     logger.info('linkPlayerToOrganizer called', { playerId, organizerId });
 

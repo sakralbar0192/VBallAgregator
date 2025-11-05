@@ -4,7 +4,7 @@
   import { PrismaGameRepo, PrismaRegistrationRepo, PrismaUserRepo, PrismaOrganizerRepo } from '../infrastructure/repositories/index.js';
   import { LoggerFactory } from '../shared/layer-logger.js';
   import { LOG_MESSAGES } from '../shared/logging-messages.js';
-  import { DomainError } from '../domain/errors.js';
+  import { BusinessRuleError } from '../domain/errors/business-rule-error.js';
   import { InputValidator } from '../shared/input-validator.js';
   import { ValidationError } from '../domain/errors/validation-error.js';
   import { GameAlreadyStartedError } from '../domain/errors/game-errors.js';
@@ -39,9 +39,9 @@
    * @param {string} gameId - Идентификатор игры.
    * @param {string} userId - Идентификатор пользователя.
    * @returns {Promise<{ status: RegStatus }>} - Статус регистрации пользователя.
-   * @throws {DomainError} - Если игра не найдена или пользователь не может присоединиться.
+   * @throws {BusinessRuleError} - Если игра не найдена или пользователь не может присоединиться.
    */
-   export async function joinGame(gameId: string, userId: string) {
+   export async function joinGame(gameId: string, userId: string): Promise<{ status: RegStatus; }> {
      // Валидация входных данных
      InputValidator.validateRequired(gameId, 'gameId');
      InputValidator.validateRequired(userId, 'userId');
@@ -61,7 +61,7 @@
     });
 
     if (!game) {
-      throw new DomainError('NOT_FOUND', 'Игра не найдена');
+      throw new BusinessRuleError('NOT_FOUND', 'Игра не найдена');
     }
 
     // Проверить, что игра еще не началась
@@ -88,12 +88,11 @@
         });
 
         if (!isConfirmedPlayer) {
-          throw new DomainError('PRIORITY_WINDOW_ACTIVE', 'Игра доступна только для подтвержденных игроков организатора в приоритетное окно');
+          throw new BusinessRuleError('PRIORITY_WINDOW_ACTIVE', 'Игра доступна только для подтвержденных игроков организатора в приоритетное окно');
         }
       }
     }
-
-    // Use new Application Service
+    
     const result = await gameApplicationService.joinGame({ gameId, userId });
 
     useCaseLogger.info('joinGame', LOG_MESSAGES.USE_CASES.JOIN_GAME_COMPLETED,
@@ -110,7 +109,7 @@
    * @param {string} userId - Идентификатор пользователя.
    * @returns {Promise<{ ok: boolean }>} - Успех операции.
    */
-  export async function leaveGame(gameId: string, userId: string) {
+  export async function leaveGame(gameId: string, userId: string): Promise<{ ok: boolean; }> {
     // Валидация входных данных
     InputValidator.validateRequired(gameId, 'gameId');
     InputValidator.validateRequired(userId, 'userId');
@@ -156,9 +155,9 @@
    * @param {string} gameId - Идентификатор игры.
    * @param {string} userId - Идентификатор пользователя.
    * @returns {Promise<{ ok: boolean }>} - Успех операции.
-   * @throws {DomainError} - Если игра не найдена или окно оплаты еще не открыто.
+   * @throws {BusinessRuleError} - Если игра не найдена или окно оплаты еще не открыто.
    */
-  export async function markPayment(gameId: string, userId: string) {
+  export async function markPayment(gameId: string, userId: string): Promise<{ ok: boolean; }> {
     // Валидация входных данных
     InputValidator.validateRequired(gameId, 'gameId');
     InputValidator.validateRequired(userId, 'userId');
@@ -171,7 +170,6 @@
       { correlationId }
     );
 
-    // Use new Application Service
     await gameApplicationService.markPayment({ gameId, userId });
 
     useCaseLogger.info('markPayment', 'Оплата отмечена успешно',
@@ -200,7 +198,7 @@
     );
 
     const game = await gameRepo.findById(gameId);
-    if (!game) throw new DomainError('NOT_FOUND', 'Игра не найдена');
+    if (!game) throw new BusinessRuleError('NOT_FOUND', 'Игра не найдена');
 
     // Use new SchedulerService
     await schedulerService.scheduleGameReminder24h(gameId, game.startsAt);
@@ -230,7 +228,7 @@
     );
 
     const game = await gameRepo.findById(gameId);
-    if (!game) throw new DomainError('NOT_FOUND', 'Игра не найдена');
+    if (!game) throw new BusinessRuleError('NOT_FOUND', 'Игра не найдена');
 
     // Use new SchedulerService
     await schedulerService.schedulePaymentReminder12h(gameId, game.startsAt);
@@ -273,7 +271,7 @@
     });
 
     if (!game) {
-      throw new DomainError('NOT_FOUND', 'Игра не найдена или доступ запрещен');
+      throw new BusinessRuleError('NOT_FOUND', 'Игра не найдена или доступ запрещен');
     }
 
     // Публикуем событие для массовых напоминаний
@@ -528,10 +526,10 @@
     // Проверить, что организатор владеет игрой
     const game = await gameRepo.findById(gameId);
     if (!game) {
-      throw new DomainError('NOT_FOUND', 'Игра не найдена');
+      throw new BusinessRuleError('NOT_FOUND', 'Игра не найдена');
     }
     if (game.organizerId !== organizerId) {
-      throw new DomainError('FORBIDDEN', 'Только организатор игры может её закрыть');
+      throw new BusinessRuleError('FORBIDDEN', 'Только организатор игры может её закрыть');
     }
 
     await gameRepo.updateStatus(gameId, GameStatus.closed);
@@ -574,12 +572,9 @@
    * @param {string[]} organizerIds - Массив ID организаторов.
    * @returns {Promise<{ ok: boolean }>} - Успех операции.
    */
-  export async function selectOrganizers(playerId: string, organizerIds: string[]) {
+  export async function selectOrganizers(playerId: string, organizerIds: string[]): Promise<{ ok: boolean; }> {
     // Валидация входных данных
     InputValidator.validateRequired(playerId, 'playerId');
-    if (!organizerIds?.length) {
-      throw new ValidationError('organizerIds', organizerIds, 'not_empty_array');
-    }
 
     const useCaseLogger = LoggerFactory.useCase('selectOrganizers');
     const correlationId = `select_orgs_${playerId}_${Date.now()}`;
@@ -591,26 +586,45 @@
 
     // Проверить существование игрока
     const player = await prisma.user.findUnique({ where: { id: playerId } });
-    if (!player) throw new DomainError('NOT_FOUND', 'Игрок не найден');
+    if (!player) throw new BusinessRuleError('NOT_FOUND', 'Игрок не найден');
+
+    // Если массив пустой, удалить все существующие связи
+    if (!organizerIds?.length) {
+      await (prisma as any).playerOrganizer.deleteMany({
+        where: { playerId }
+      });
+      useCaseLogger.info('selectOrganizers', 'Все связи с организаторами удалены',
+        { playerId },
+        { correlationId, executionTimeMs: Date.now() - parseInt(correlationId.split('_')[2] || '0') }
+      );
+      return { ok: true };
+    }
 
     // Проверить существование организаторов
     const organizers = await prisma.organizer.findMany({
       where: { id: { in: organizerIds } }
     });
     if (organizers.length !== organizerIds.length) {
-      throw new DomainError('NOT_FOUND', 'Один или несколько организаторов не найдены');
+      throw new BusinessRuleError('NOT_FOUND', 'Один или несколько организаторов не найдены');
     }
 
-    // Создать связи со статусом pending
-    const playerOrganizers = organizerIds.map(organizerId => ({
-      playerId,
-      organizerId,
-      status: 'pending' as const,
-    }));
+    // Удалить существующие связи и создать новые со статусом pending
+    await prisma.$transaction(async (tx: any) => {
+      // Удалить все существующие связи игрока
+      await tx.playerOrganizer.deleteMany({
+        where: { playerId }
+      });
 
-    await (prisma as any).playerOrganizer.createMany({
-      data: playerOrganizers,
-      skipDuplicates: true, // Игнорировать дубликаты
+      // Создать новые связи со статусом pending
+      const playerOrganizers = organizerIds.map(organizerId => ({
+        playerId,
+        organizerId,
+        status: 'pending' as const,
+      }));
+
+      await tx.playerOrganizer.createMany({
+        data: playerOrganizers
+      });
     });
 
     useCaseLogger.info('selectOrganizers', 'Организаторы выбраны',
@@ -651,10 +665,10 @@
       where: { playerId_organizerId: { playerId, organizerId } }
     });
     if (!playerOrganizer) {
-      throw new DomainError('NOT_FOUND', 'Связь между игроком и организатором не найдена');
+      throw new BusinessRuleError('NOT_FOUND', 'Связь между игроком и организатором не найдена');
     }
     if (playerOrganizer.status !== 'pending') {
-      throw new DomainError('INVALID_STATE', 'Игрок уже подтвержден или отклонен');
+      throw new BusinessRuleError('INVALID_STATE', 'Игрок уже подтвержден или отклонен');
     }
 
     // Обновить статус на confirmed
@@ -689,7 +703,7 @@
    * @param {string} playerId - ID игрока.
    * @returns {Promise<{ ok: boolean }>} - Успех операции.
    */
-  export async function rejectPlayer(organizerId: string, playerId: string) {
+  export async function rejectPlayer(organizerId: string, playerId: string): Promise<{ ok: boolean; }> {
     // Валидация входных данных
     InputValidator.validateRequired(organizerId, 'organizerId');
     InputValidator.validateRequired(playerId, 'playerId');
@@ -713,7 +727,7 @@
     });
 
     if (result.count === 0) {
-      throw new DomainError('NOT_FOUND', 'Связь между игроком и организатором не найдена или уже обработана');
+      throw new BusinessRuleError('NOT_FOUND', 'Связь между игроком и организатором не найдена или уже обработана');
     }
 
     // Получить имя игрока для события
@@ -893,7 +907,7 @@
       select: { organizerId: true, createdAt: true }
     });
     if (!game) {
-      throw new DomainError('NOT_FOUND', 'Игра не найдена');
+      throw new BusinessRuleError('NOT_FOUND', 'Игра не найдена');
     }
 
     const isConfirmedPlayer = await (prisma as any).playerOrganizer.findFirst({
@@ -905,7 +919,7 @@
     });
 
     if (!isConfirmedPlayer) {
-      throw new DomainError('FORBIDDEN', 'Только подтвержденные игроки организатора могут отвечать на приглашения');
+      throw new BusinessRuleError('FORBIDDEN', 'Только подтвержденные игроки организатора могут отвечать на приглашения');
     }
 
     // Обновить или создать запись GamePlayerResponse
@@ -965,7 +979,7 @@
       include: { organizer: true }
     });
     if (!game) {
-      throw new DomainError('NOT_FOUND', 'Игра не найдена');
+      throw new BusinessRuleError('NOT_FOUND', 'Игра не найдена');
     }
 
     // Найти всех подтвержденных игроков организатора
@@ -1088,10 +1102,10 @@
 
     // Проверить существование игрока и организатора
     const player = await prisma.user.findUnique({ where: { id: playerId } });
-    if (!player) throw new DomainError('NOT_FOUND', 'Игрок не найден');
+    if (!player) throw new BusinessRuleError('NOT_FOUND', 'Игрок не найден');
 
     const organizer = await prisma.organizer.findUnique({ where: { id: organizerId } });
-    if (!organizer) throw new DomainError('NOT_FOUND', 'Организатор не найден');
+    if (!organizer) throw new BusinessRuleError('NOT_FOUND', 'Организатор не найден');
 
     // Здесь можно добавить логику создания связи, если нужна таблица
     // Пока просто публикуем событие для уведомления

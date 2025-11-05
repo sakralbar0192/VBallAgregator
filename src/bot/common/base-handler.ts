@@ -43,7 +43,7 @@ export abstract class BaseHandler {
    * Требовать наличие пользователя, иначе бросить ошибку
    */
   protected static async requireUser(ctx: Context): Promise<User> {
-    const user = await this.getUser(ctx);
+    const user = await BaseHandler.getUser(ctx);
     if (!user) {
       throw new Error('Пользователь не найден. Начни с команды /start');
     }
@@ -54,8 +54,8 @@ export abstract class BaseHandler {
    * Требовать наличие организатора, иначе бросить ошибку
    */
   protected static async requireOrganizer(ctx: Context): Promise<Organizer> {
-    const user = await this.requireUser(ctx);
-    const organizer = await this.getOrganizer(user.id);
+    const user = await BaseHandler.requireUser(ctx);
+    const organizer = await BaseHandler.getOrganizer(user.id);
     if (!organizer) {
       throw new Error('Ты не организатор этой игры');
     }

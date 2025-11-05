@@ -5,10 +5,11 @@ import { SchedulerService } from '../../shared/scheduler-service.js';
 import { v4 as uuid } from 'uuid';
 import { Game } from '../../domain/game.js';
 import { logger } from '../../shared/logger.js';
-import { DomainError } from '../../domain/errors.js';
+import { BusinessRuleError } from '../../domain/errors/business-rule-error.js';
 import { metrics } from '../../shared/metrics.js';
 import { LoggerFactory } from '../../shared/layer-logger.js';
 import { LOG_MESSAGES } from '../../shared/logging-messages.js';
+import { RegStatus } from '../../domain/registration.js';
 
 export interface MarkPaymentCommand {
   gameId: string;
@@ -88,11 +89,8 @@ export class GameApplicationService {
    * @param command - Команда с gameId и userId
    * @returns Статус записи ('registered' или 'waitlisted')
    * @throws DomainError если игра не найдена или заполнена
-   * @example
-   * const result = await gameService.joinGame({ gameId: '123', userId: '456' });
-   * console.log(result.status); // 'registered' или 'waitlisted'
    */
-  async joinGame(command: JoinGameCommand): Promise<{ status: string }> {
+  async joinGame(command: JoinGameCommand): Promise<{ status: RegStatus }> {
     return await this.gameRepo.transaction(async () => {
       const result = await this.gameDomainService.processJoinGame(
         command.gameId,
@@ -121,15 +119,6 @@ export class GameApplicationService {
    * @param command - Команда с параметрами игры
    * @returns Созданная игра
    * @throws DomainError если организатор не найден
-   * @example
-   * const game = await gameService.createGame({
-   *   organizerId: '123',
-   *   venueId: 'venue1',
-   *   startsAt: new Date('2025-12-01T10:00:00Z'),
-   *   capacity: 12,
-   *   levelTag: 'amateur',
-   *   priceText: '500 руб'
-   * });
    */
   async createGame(command: CreateGameCommand): Promise<Game> {
     const serviceLogger = LoggerFactory.service('game-service');
@@ -144,11 +133,11 @@ export class GameApplicationService {
     const organizer = await this.organizerRepo.findByUserId(command.organizerId);
     if (!organizer) {
       serviceLogger.error('createGame', LOG_MESSAGES.SERVICES.GAME_SERVICE_ORGANIZER_NOT_FOUND,
-        new DomainError('NOT_FOUND', 'Организатор не найден'),
+        new BusinessRuleError('NOT_FOUND', 'Организатор не найден'),
         { organizerId: command.organizerId },
         { correlationId }
       );
-      throw new DomainError('NOT_FOUND', 'Организатор не найден');
+      throw new BusinessRuleError('NOT_FOUND', 'Организатор не найден');
     }
 
     // Check if venue is available at the specified time
@@ -158,7 +147,7 @@ export class GameApplicationService {
         { venueId: command.venueId, startsAt: command.startsAt, conflictingGameId: conflictingGame.id },
         { correlationId }
       );
-      throw new DomainError('VENUE_OCCUPIED', `Площадка занята в это время. Конфликтующая игра: ${conflictingGame.id}`);
+      throw new BusinessRuleError('VENUE_OCCUPIED', `Площадка занята в это время. Конфликтующая игра: ${conflictingGame.id}`);
     }
 
     const g = new Game(
@@ -253,7 +242,7 @@ export class GameApplicationService {
   async finishGame(gameId: string): Promise<void> {
     const game = await this.gameRepo.findById(gameId);
     if (!game) {
-      throw new DomainError('NOT_FOUND', 'Игра не найдена');
+      throw new BusinessRuleError('NOT_FOUND', 'Игра не найдена');
     }
 
     game.finish();

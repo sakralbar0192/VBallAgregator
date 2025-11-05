@@ -10,6 +10,19 @@ import { getVenueName, getRegistrationStatusName, getPaymentStatusName, getGameS
 const GameIdSchema = z.string().uuid();
 
 export class CommandHandlers {
+  static organizerSelectionSessions = new Map<number, { session: Set<string>, timestamp: number }>();
+
+  // Очистка сессий по таймауту (30 минут)
+  private static cleanupSessions(): void {
+    const now = Date.now();
+    const timeout = 30 * 60 * 1000; // 30 минут
+
+    for (const [telegramId, data] of this.organizerSelectionSessions) {
+      if (now - data.timestamp > timeout) {
+        this.organizerSelectionSessions.delete(telegramId);
+      }
+    }
+  }
   static async handleGameInfo(ctx: Context, gameId: string): Promise<void> {
     const validationResult = GameIdSchema.safeParse(gameId);
     if (!validationResult.success) {
@@ -729,41 +742,28 @@ export class CommandHandlers {
     }
 
     try {
-      // Получить всех организаторов
-      const organizers = await prisma.organizer.findMany({
-        include: { user: true },
-        orderBy: { user: { name: 'asc' } }
-      });
+      // Очистить старые сессии перед началом
+      this.cleanupSessions();
 
-      if (organizers.length === 0) {
-        await ctx.reply('Нет доступных организаторов');
-        return;
-      }
-
-      // Получить текущие связи пользователя с организаторами
-      const playerOrganizers = await (prisma as any).playerOrganizer.findMany({
+      // Инициализировать сессию с текущими выбранными организаторами из БД
+      const telegramId = ctx.from!.id;
+      const existingOrganizers = await (prisma as any).playerOrganizer.findMany({
         where: { playerId: user.id },
         select: { organizerId: true }
       });
-      const selectedOrganizerIds = new Set(playerOrganizers.map((po: any) => po.organizerId));
+      const selectedIds = new Set<string>(existingOrganizers.map((po: any) => String(po.organizerId)));
 
-      // Создать кнопки для каждого организатора
-      const buttons = organizers.map((org: any) => {
-        const isSelected = selectedOrganizerIds.has(org.id);
-        const checkmark = isSelected ? '✅' : '☐';
-        const organizerName = org.title || org.user.name;
-        return [
-          {
-            text: `${checkmark} ${organizerName}`,
-            callback_data: `toggle_organizer_${org.id}`
-          }
-        ];
+      this.organizerSelectionSessions.set(telegramId, {
+        session: selectedIds,
+        timestamp: Date.now()
       });
 
-      // Добавить кнопку "Готово"
-      buttons.push([
-        { text: '✅ Готово', callback_data: 'organizers_done' }
-      ]);
+      const buttons = await this.buildOrganizerSelectionButtons(user.id, telegramId);
+
+      if (buttons.length === 0) {
+        await ctx.reply('Нет доступных организаторов');
+        return;
+      }
 
       await ctx.reply('🔗 Выбери организаторов:', {
         reply_markup: { inline_keyboard: buttons }
@@ -781,67 +781,23 @@ export class CommandHandlers {
     }
 
     try {
-      // Проверить, существует ли уже связь
-      const existingLink = await (prisma as any).playerOrganizer.findUnique({
-        where: { playerId_organizerId: { playerId: user.id, organizerId } }
-      });
-
-      if (existingLink) {
-        // Удалить связь
-        await (prisma as any).playerOrganizer.delete({
-          where: { playerId_organizerId: { playerId: user.id, organizerId } }
-        });
-      } else {
-        // Создать новую связь со статусом pending
-        await (prisma as any).playerOrganizer.create({
-          data: {
-            playerId: user.id,
-            organizerId,
-            status: 'pending'
-          }
-        });
-
-        // Отправить событие о выборе организатора
-        const { EventBus } = await import('../shared/event-bus.js');
-        const eventBus = EventBus.getInstance();
-        await eventBus.publish({
-          type: 'PlayerSelectedOrganizers',
-          occurredAt: new Date(),
-          id: '',
-          payload: { playerId: user.id, organizerIds: [organizerId] }
-        });
+      const telegramId = ctx.from!.id;
+      let sessionData = this.organizerSelectionSessions.get(telegramId);
+      if (!sessionData) {
+        sessionData = { session: new Set<string>(), timestamp: Date.now() };
+        this.organizerSelectionSessions.set(telegramId, sessionData);
       }
 
-      // Получить всех организаторов
-      const organizers = await prisma.organizer.findMany({
-        include: { user: true },
-        orderBy: { user: { name: 'asc' } }
-      });
+      if (sessionData.session.has(organizerId)) {
+        sessionData.session.delete(organizerId);
+      } else {
+        sessionData.session.add(organizerId);
+      }
 
-      // Получить текущие связи пользователя с организаторами
-      const playerOrganizers = await (prisma as any).playerOrganizer.findMany({
-        where: { playerId: user.id },
-        select: { organizerId: true }
-      });
-      const selectedOrganizerIds = new Set(playerOrganizers.map((po: any) => po.organizerId));
+      // Обновить timestamp
+      sessionData.timestamp = Date.now();
 
-      // Создать кнопки для каждого организатора
-      const buttons = organizers.map((org: any) => {
-        const isSelected = selectedOrganizerIds.has(org.id);
-        const checkmark = isSelected ? '✅' : '☐';
-        const organizerName = org.title || org.user.name;
-        return [
-          {
-            text: `${checkmark} ${organizerName}`,
-            callback_data: `toggle_organizer_${org.id}`
-          }
-        ];
-      });
-
-      // Добавить кнопку "Готово"
-      buttons.push([
-        { text: '✅ Готово', callback_data: 'organizers_done' }
-      ]);
+      const buttons = await this.buildOrganizerSelectionButtons(user.id, telegramId);
 
       // Обновить сообщение вместо отправки нового
       await ctx.editMessageText('🔗 Выбери организаторов:', {
@@ -851,5 +807,46 @@ export class CommandHandlers {
     } catch (error: any) {
       await ctx.answerCbQuery('Ошибка при обновлении выбора');
     }
+  }
+
+  private static async buildOrganizerSelectionButtons(userId: string, telegramId: number): Promise<any[]> {
+    // Получить всех организаторов, исключая самого пользователя, если он организатор
+    const organizers = await prisma.organizer.findMany({
+      where: {
+        userId: {
+          not: userId
+        }
+      },
+      include: { user: true },
+      orderBy: { user: { name: 'asc' } }
+    });
+
+    if (organizers.length === 0) {
+      return [];
+    }
+
+    // Получить выбранные организаторы из сессии
+    const sessionData = this.organizerSelectionSessions.get(telegramId);
+    const selectedOrganizerIds = sessionData ? sessionData.session : new Set<string>();
+
+    // Создать кнопки для каждого организатора
+    const buttons = organizers.map((org: any) => {
+      const isSelected = selectedOrganizerIds.has(org.id);
+      const checkmark = isSelected ? '✅' : '☐';
+      const organizerName = org.title || org.user.name;
+      return [
+        {
+          text: `${checkmark} ${organizerName}`,
+          callback_data: `toggle_organizer_${org.id}`
+        }
+      ];
+    });
+
+    // Добавить кнопку "Готово"
+    buttons.push([
+      { text: '✅ Готово', callback_data: 'organizers_done' }
+    ]);
+
+    return buttons;
   }
 }

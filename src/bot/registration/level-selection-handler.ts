@@ -29,16 +29,17 @@ export class LevelSelectionHandler extends BaseHandler {
    */
   static async handleLevelSelection(ctx: Context, level: string): Promise<void> {
     const telegramId = ctx.from!.id;
-    const correlationId = this.createCorrelationId(ctx, 'level_selection');
-
+    const correlationId = LevelSelectionHandler.createCorrelationId(ctx, 'level_selection');
     try {
-      const user = await this.requireUser(ctx);
+      const user = await LevelSelectionHandler.requireUser(ctx);
 
       await updateUserLevel(user.id, level);
 
-      // Проверить, есть ли организаторы в сервисе
-      const organizersCount = await prisma.organizer.count();
-      if (organizersCount > 0) {
+      // Проверить, есть ли другие организаторы в сервисе (исключая самого пользователя)
+      const organizers = await prisma.organizer.findMany();
+      const otherOrganizersCount = organizers.filter(org => org.userId !== user.id).length;
+
+      if (otherOrganizersCount > 0) {
         await ctx.editMessageText('Отлично! Хочешь выбрать организаторов для приоритетных приглашений на игры?', {
           reply_markup: {
             inline_keyboard: KeyboardBuilder.createRegistrationCompletionKeyboard(true)
@@ -49,7 +50,7 @@ export class LevelSelectionHandler extends BaseHandler {
       }
 
     } catch (error) {
-      this.logger.error('handleLevelSelection', 'Failed to update user level',
+      LevelSelectionHandler.logger.error('handleLevelSelection', 'Failed to update user level',
         error as Error,
         { telegramId, level, correlationId }
       );

@@ -31,7 +31,7 @@ export class InvitationHandler extends BaseHandler {
     }
 
     const { gameId, response } = parsed;
-    const user = await this.requireUser(ctx);
+    const user = await InvitationHandler.requireUser(ctx);
 
     try {
       const { respondToGameInvitation } = await import('../../application/use-cases.js');
@@ -39,7 +39,7 @@ export class InvitationHandler extends BaseHandler {
       await ctx.answerCbQuery('✅ Ответ "Да" отправлен');
       await ctx.editMessageText('✅ Вы ответили "Да" на приглашение!');
     } catch (error) {
-      this.logger.error('handleRespondGameYes', 'Failed to respond to game invitation',
+      InvitationHandler.logger.error('handleRespondGameYes', 'Failed to respond to game invitation',
         error as Error,
         { userId: user.id, gameId, response }
       );
@@ -59,7 +59,7 @@ export class InvitationHandler extends BaseHandler {
     }
 
     const { gameId, response } = parsed;
-    const user = await this.requireUser(ctx);
+    const user = await InvitationHandler.requireUser(ctx);
 
     try {
       const { respondToGameInvitation } = await import('../../application/use-cases.js');
@@ -67,7 +67,7 @@ export class InvitationHandler extends BaseHandler {
       await ctx.answerCbQuery('❌ Ответ "Нет" отправлен');
       await ctx.editMessageText('❌ Вы ответили "Нет" на приглашение!');
     } catch (error) {
-      this.logger.error('handleRespondGameNo', 'Failed to respond to game invitation',
+      InvitationHandler.logger.error('handleRespondGameNo', 'Failed to respond to game invitation',
         error as Error,
         { userId: user.id, gameId, response }
       );

@@ -88,7 +88,7 @@ bot.command('newgame', async (ctx: any) => {
 bot.action('role_player', LevelSelectionHandler.handleRolePlayer);
 bot.action('role_organizer', RegistrationHandler.handleRoleOrganizer);
 bot.action(/^level_(.+)$/, async (ctx) => {
-  const level = CallbackDataParser.parseLevel(ctx.match[1]!);
+  const level = CallbackDataParser.parseLevel(ctx.match[0]!);
   if (level) {
     await LevelSelectionHandler.handleLevelSelection(ctx, level);
   }
@@ -98,19 +98,19 @@ bot.action('finish_registration', LevelSelectionHandler.handleFinishRegistration
 
 // Управление играми
 bot.action(/^join_game_(.+)$/, async (ctx) => {
-  await GameManagementHandler.handleGameAction(ctx, ctx.match[1] ?? '');
+  await GameManagementHandler.handleGameAction(ctx, ctx.match[0] ?? '');
 });
 bot.action(/^leave_game_(.+)$/, async (ctx) => {
-  await GameManagementHandler.handleGameAction(ctx, ctx.match[1] ?? '');
+  await GameManagementHandler.handleGameAction(ctx, ctx.match[0] ?? '');
 });
 bot.action(/^pay_game_(.+)$/, async (ctx) => {
-  await GameManagementHandler.handleGameAction(ctx, ctx.match[1] ?? '');
+  await GameManagementHandler.handleGameAction(ctx, ctx.match[0] ?? '');
 });
 bot.action(/^close_game_(.+)$/, async (ctx) => {
-  await GameManagementHandler.handleGameAction(ctx, ctx.match[1] ?? '');
+  await GameManagementHandler.handleGameAction(ctx, ctx.match[0] ?? '');
 });
 bot.action(/^payments_game_(.+)$/, async (ctx) => {
-  await GameManagementHandler.handleGameAction(ctx, ctx.match[1] ?? '');
+  await GameManagementHandler.handleGameAction(ctx, ctx.match[0] ?? '');
 });
 
 // Платежи

@@ -48,7 +48,7 @@ export class CommandValidator {
    * Валидирует gameId и возвращает его или null
    */
   static validateGameId(gameId: string): string | null {
-    if (!gameId || !this.isValidUUID(gameId)) {
+    if (!gameId || !CommandValidator.isValidUUID(gameId)) {
       return null;
     }
     return gameId;
@@ -58,13 +58,13 @@ export class CommandValidator {
    * Валидирует команду и возвращает gameId с обработкой ошибок
    */
   static async validateAndExtractGameId(ctx: Context, commandName: string): Promise<string> {
-    const gameId = this.validateSingleArgCommand(ctx, commandName);
+    const gameId = CommandValidator.validateSingleArgCommand(ctx, commandName);
     if (!gameId) {
-      await ctx.reply(this.createUsageMessage(commandName, '<game_id>'));
+      await ctx.reply(CommandValidator.createUsageMessage(commandName, '<game_id>'));
       throw new Error(`Invalid command usage: /${commandName}`);
     }
 
-    const validGameId = this.validateGameId(gameId);
+    const validGameId = CommandValidator.validateGameId(gameId);
     if (!validGameId) {
       await ctx.reply('Неверный формат ID игры');
       throw new Error(`Invalid game ID format: ${gameId}`);

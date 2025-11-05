@@ -31,7 +31,7 @@ export class SettingsHandler extends BaseHandler {
    * Показывает настройки уведомлений об оплате
    */
   static async handleSettingsPayments(ctx: Context): Promise<void> {
-    const user = await this.requireUser(ctx);
+    const user = await SettingsHandler.requireUser(ctx);
 
     try {
       const { userPreferencesService } = await import('../../shared/user-preferences-service.js');
@@ -66,7 +66,7 @@ export class SettingsHandler extends BaseHandler {
         reply_markup: { inline_keyboard: buttons }
       });
     } catch (error) {
-      this.logger.error('handleSettingsPayments', 'Failed to load payment settings',
+      SettingsHandler.logger.error('handleSettingsPayments', 'Failed to load payment settings',
         error as Error,
         { userId: user.id }
       );
@@ -79,7 +79,7 @@ export class SettingsHandler extends BaseHandler {
    * Показывает настройки уведомлений об играх
    */
   static async handleSettingsGames(ctx: Context): Promise<void> {
-    const user = await this.requireUser(ctx);
+    const user = await SettingsHandler.requireUser(ctx);
 
     try {
       const { userPreferencesService } = await import('../../shared/user-preferences-service.js');
@@ -114,7 +114,7 @@ export class SettingsHandler extends BaseHandler {
         reply_markup: { inline_keyboard: buttons }
       });
     } catch (error) {
-      this.logger.error('handleSettingsGames', 'Failed to load game settings',
+      SettingsHandler.logger.error('handleSettingsGames', 'Failed to load game settings',
         error as Error,
         { userId: user.id }
       );
@@ -127,7 +127,7 @@ export class SettingsHandler extends BaseHandler {
    * Показывает настройки уведомлений организатора
    */
   static async handleSettingsOrganizer(ctx: Context): Promise<void> {
-    const user = await this.requireUser(ctx);
+    const user = await SettingsHandler.requireUser(ctx);
 
     try {
       const { userPreferencesService } = await import('../../shared/user-preferences-service.js');
@@ -155,7 +155,7 @@ export class SettingsHandler extends BaseHandler {
         reply_markup: { inline_keyboard: buttons }
       });
     } catch (error) {
-      this.logger.error('handleSettingsOrganizer', 'Failed to load organizer settings',
+      SettingsHandler.logger.error('handleSettingsOrganizer', 'Failed to load organizer settings',
         error as Error,
         { userId: user.id }
       );
@@ -168,14 +168,14 @@ export class SettingsHandler extends BaseHandler {
    * Возвращает в главное меню настроек
    */
   static async handleBackToSettings(ctx: Context): Promise<void> {
-    await this.handleSettings(ctx);
+    await SettingsHandler.handleSettings(ctx);
   }
 
   /**
    * Обработчики переключения настроек
    */
   static async handleToggleGlobal(ctx: Context): Promise<void> {
-    const user = await this.requireUser(ctx);
+    const user = await SettingsHandler.requireUser(ctx);
 
     try {
       const { userPreferencesService } = await import('../../shared/user-preferences-service.js');
@@ -186,9 +186,9 @@ export class SettingsHandler extends BaseHandler {
       });
 
       await ctx.answerCbQuery('✅ Настройки обновлены');
-      await this.handleSettings(ctx);
+      await SettingsHandler.handleSettings(ctx);
     } catch (error) {
-      this.logger.error('handleToggleGlobal', 'Failed to toggle global notifications',
+      SettingsHandler.logger.error('handleToggleGlobal', 'Failed to toggle global notifications',
         error as Error,
         { userId: user.id }
       );
@@ -197,7 +197,7 @@ export class SettingsHandler extends BaseHandler {
   }
 
   static async handleTogglePaymentAuto(ctx: Context): Promise<void> {
-    const user = await this.requireUser(ctx);
+    const user = await SettingsHandler.requireUser(ctx);
 
     try {
       const { userPreferencesService } = await import('../../shared/user-preferences-service.js');
@@ -209,7 +209,7 @@ export class SettingsHandler extends BaseHandler {
       await ctx.answerCbQuery('✅ Настройка обновлена');
       await ctx.editMessageText('💰 Настройки уведомлений об оплате обновлены');
     } catch (error) {
-      this.logger.error('handleTogglePaymentAuto', 'Failed to toggle payment auto reminders',
+      SettingsHandler.logger.error('handleTogglePaymentAuto', 'Failed to toggle payment auto reminders',
         error as Error,
         { userId: user.id }
       );
@@ -218,7 +218,7 @@ export class SettingsHandler extends BaseHandler {
   }
 
   static async handleTogglePaymentManual(ctx: Context): Promise<void> {
-    const user = await this.requireUser(ctx);
+    const user = await SettingsHandler.requireUser(ctx);
 
     try {
       const { userPreferencesService } = await import('../../shared/user-preferences-service.js');
@@ -230,7 +230,7 @@ export class SettingsHandler extends BaseHandler {
       await ctx.answerCbQuery('✅ Настройка обновлена');
       await ctx.editMessageText('💰 Настройки уведомлений об оплате обновлены');
     } catch (error) {
-      this.logger.error('handleTogglePaymentManual', 'Failed to toggle payment manual reminders',
+      SettingsHandler.logger.error('handleTogglePaymentManual', 'Failed to toggle payment manual reminders',
         error as Error,
         { userId: user.id }
       );
@@ -239,7 +239,7 @@ export class SettingsHandler extends BaseHandler {
   }
 
   static async handleToggleGame24h(ctx: Context): Promise<void> {
-    const user = await this.requireUser(ctx);
+    const user = await SettingsHandler.requireUser(ctx);
 
     try {
       const { userPreferencesService } = await import('../../shared/user-preferences-service.js');
@@ -251,7 +251,7 @@ export class SettingsHandler extends BaseHandler {
       await ctx.answerCbQuery('✅ Настройка обновлена');
       await ctx.editMessageText('🎾 Настройки уведомлений об играх обновлены');
     } catch (error) {
-      this.logger.error('handleToggleGame24h', 'Failed to toggle game 24h reminders',
+      SettingsHandler.logger.error('handleToggleGame24h', 'Failed to toggle game 24h reminders',
         error as Error,
         { userId: user.id }
       );
@@ -260,7 +260,7 @@ export class SettingsHandler extends BaseHandler {
   }
 
   static async handleToggleGame2h(ctx: Context): Promise<void> {
-    const user = await this.requireUser(ctx);
+    const user = await SettingsHandler.requireUser(ctx);
 
     try {
       const { userPreferencesService } = await import('../../shared/user-preferences-service.js');
@@ -272,7 +272,7 @@ export class SettingsHandler extends BaseHandler {
       await ctx.answerCbQuery('✅ Настройка обновлена');
       await ctx.editMessageText('🎾 Настройки уведомлений об играх обновлены');
     } catch (error) {
-      this.logger.error('handleToggleGame2h', 'Failed to toggle game 2h reminders',
+      SettingsHandler.logger.error('handleToggleGame2h', 'Failed to toggle game 2h reminders',
         error as Error,
         { userId: user.id }
       );
@@ -281,7 +281,7 @@ export class SettingsHandler extends BaseHandler {
   }
 
   static async handleToggleOrganizerNotifications(ctx: Context): Promise<void> {
-    const user = await this.requireUser(ctx);
+    const user = await SettingsHandler.requireUser(ctx);
 
     try {
       const { userPreferencesService } = await import('../../shared/user-preferences-service.js');
@@ -293,7 +293,7 @@ export class SettingsHandler extends BaseHandler {
       await ctx.answerCbQuery('✅ Настройка обновлена');
       await ctx.editMessageText('👥 Настройки уведомлений организатора обновлены');
     } catch (error) {
-      this.logger.error('handleToggleOrganizerNotifications', 'Failed to toggle organizer notifications',
+      SettingsHandler.logger.error('handleToggleOrganizerNotifications', 'Failed to toggle organizer notifications',
         error as Error,
         { userId: user.id }
       );

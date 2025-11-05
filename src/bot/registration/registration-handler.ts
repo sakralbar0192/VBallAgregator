@@ -18,17 +18,17 @@ export class RegistrationHandler extends BaseHandler {
   static async handleStart(ctx: Context): Promise<void> {
     const telegramId = ctx.from!.id;
     const name = ctx.from!.first_name + (ctx.from!.last_name ? ' ' + ctx.from!.last_name : '');
-    const correlationId = this.createCorrelationId(ctx, 'start');
+    const correlationId = RegistrationHandler.createCorrelationId(ctx, 'start');
 
-    this.logger.info('handleUserStart', LOG_MESSAGES.BOT.START_COMMAND_INITIATED,
+    RegistrationHandler.logger.info('handleUserStart', LOG_MESSAGES.BOT.START_COMMAND_INITIATED,
       { telegramId, name },
       { correlationId }
     );
 
     try {
-      this.logger.entry('registerUser', { telegramId, name, correlationId });
+      RegistrationHandler.logger.entry('registerUser', { telegramId, name, correlationId });
       const result = await registerUser(telegramId, name);
-      this.logger.exit('registerUser', { userId: result.userId, correlationId });
+      RegistrationHandler.logger.exit('registerUser', { userId: result.userId, correlationId });
 
       await ctx.reply('Привет! Я бот для организации волейбольных игр. Выбери свою роль:', {
         reply_markup: {
@@ -37,7 +37,7 @@ export class RegistrationHandler extends BaseHandler {
       });
 
     } catch (error) {
-      this.logger.error('handleUserStart', LOG_MESSAGES.BOT.START_COMMAND_FAILED,
+      RegistrationHandler.logger.error('handleUserStart', LOG_MESSAGES.BOT.START_COMMAND_FAILED,
         error as Error,
         { telegramId, error: (error as Error).message },
         { correlationId }
@@ -52,17 +52,17 @@ export class RegistrationHandler extends BaseHandler {
    */
   static async handleRoleOrganizer(ctx: Context): Promise<void> {
     const telegramId = ctx.from!.id;
-    const correlationId = this.createCorrelationId(ctx, 'role_organizer');
+    const correlationId = RegistrationHandler.createCorrelationId(ctx, 'role_organizer');
 
     try {
-      const user = await this.requireUser(ctx);
+      const user = await RegistrationHandler.requireUser(ctx);
 
       await registerOrganizer(user.id, ctx.from!.first_name);
 
       await ctx.editMessageText('Ты зарегистрирован как организатор! Создай игру командой /newgame');
 
     } catch (error) {
-      this.logger.error('handleRoleOrganizer', 'Failed to register organizer',
+      RegistrationHandler.logger.error('handleRoleOrganizer', 'Failed to register organizer',
         error as Error,
         { telegramId, correlationId }
       );

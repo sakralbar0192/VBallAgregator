@@ -11,11 +11,11 @@ export class CallbackDataParser {
   }
 
   /**
-   * Извлечь playerId из callback данных типа "confirm_player_<playerId>"
+   * Извлечь playerId из callback данных типа "confirm_player_<playerId>" или "reject_player_<playerId>"
    */
   static parsePlayerId(data: string): string | null {
-    const match = data.match(/^confirm_player_(.+)$/);
-    return match ? match[1] ?? null : null;
+    const match = data.match(/^(confirm_player_|reject_player_)(.+)$/);
+    return match ? match[2] ?? null : null;
   }
 
   /**

@@ -18,8 +18,7 @@ export class PaymentReminderHandler extends BaseHandler {
     const telegramId = ctx.from!.id;
 
     try {
-      const user = await this.requireUser(ctx);
-      const organizer = await this.requireOrganizer(ctx);
+      const organizer = await PaymentReminderHandler.requireOrganizer(ctx);
 
       const { sendPaymentReminders } = await import('../../application/use-cases.js');
       await sendPaymentReminders(gameId, organizer.id!);
@@ -31,7 +30,7 @@ export class PaymentReminderHandler extends BaseHandler {
         });
       }
     } catch (error) {
-      this.logger.error('handleSendReminders', 'Failed to send payment reminders',
+      PaymentReminderHandler.logger.error('handleSendReminders', 'Failed to send payment reminders',
         error as Error,
         { telegramId, gameId }
       );
@@ -49,6 +48,6 @@ export class PaymentReminderHandler extends BaseHandler {
       return;
     }
 
-    await this.handleSendReminders(ctx, gameId);
+    await PaymentReminderHandler.handleSendReminders(ctx, gameId);
   }
 }

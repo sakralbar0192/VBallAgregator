@@ -14,7 +14,7 @@ export class PaymentHandler extends BaseHandler {
    * Отмечает оплату за игру
    */
   static async handlePay(ctx: Context, gameId: string): Promise<void> {
-    if (!this.validateGameId(gameId)) {
+    if (!PaymentHandler.validateGameId(gameId)) {
       await ctx.reply('Неверный формат ID игры');
       return;
     }
@@ -26,7 +26,7 @@ export class PaymentHandler extends BaseHandler {
    * Показывает статус оплат для игры (только для организатора)
    */
   static async handlePayments(ctx: Context, gameId: string): Promise<void> {
-    if (!this.validateGameId(gameId)) {
+    if (!PaymentHandler.validateGameId(gameId)) {
       await ctx.reply('Неверный формат ID игры');
       return;
     }

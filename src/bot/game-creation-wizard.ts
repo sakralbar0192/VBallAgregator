@@ -31,7 +31,7 @@ export class GameCreationWizard {
     }
 
     // Инициализируем сессию создания игры
-    this.sessions.set(telegramId, { userId: user.id });
+    GameCreationWizard.sessions.set(telegramId, { userId: user.id });
 
     // Определяем, можно ли создать игру сегодня
     // Правило: игру можно создать только если минимальное время начала (текущее время + 4 часа) <= 21:00
@@ -65,7 +65,7 @@ export class GameCreationWizard {
 
   static async handleDateSelection(ctx: Context, dateKey: string): Promise<void> {
     const telegramId = ctx.from!.id;
-    const session = this.sessions.get(telegramId);
+    const session = GameCreationWizard.sessions.get(telegramId);
     if (!session) {
       await ctx.editMessageText('Сессия истекла. Начни заново с /newgame');
       return;
@@ -73,7 +73,7 @@ export class GameCreationWizard {
 
     // Вычисляем дату в пользовательском TZ
     const userTz = getUserTimezone(session.userId!);
-    const selectedDate = this.calculateDate(dateKey, userTz);
+    const selectedDate = GameCreationWizard.calculateDate(dateKey, userTz);
     session.date = selectedDate;
 
     // Шаг 2: выбор времени
@@ -100,7 +100,7 @@ export class GameCreationWizard {
 
   static async handleTimeSelection(ctx: Context, hour: number): Promise<void> {
     const telegramId = ctx.from!.id;
-    const session = this.sessions.get(telegramId);
+    const session = GameCreationWizard.sessions.get(telegramId);
     if (!session || !session.date) {
       await ctx.editMessageText('Сессия истекла. Начни заново с /newgame');
       return;
@@ -124,7 +124,7 @@ export class GameCreationWizard {
 
   static async handleLevelSelection(ctx: Context, level: string): Promise<void> {
     const telegramId = ctx.from!.id;
-    const session = this.sessions.get(telegramId);
+    const session = GameCreationWizard.sessions.get(telegramId);
     if (!session || !session.date) {
       await ctx.editMessageText('Сессия истекла. Начни заново с /newgame');
       return;
@@ -160,7 +160,7 @@ export class GameCreationWizard {
 
   static async handleVenueSelection(ctx: Context, venueKey: string): Promise<void> {
     const telegramId = ctx.from!.id;
-    const session = this.sessions.get(telegramId);
+    const session = GameCreationWizard.sessions.get(telegramId);
     if (!session || !session.date || !session.levelTag || !session.userId) {
       await ctx.editMessageText('Сессия истекла. Начни заново с /newgame');
       return;
@@ -176,7 +176,7 @@ export class GameCreationWizard {
         session.date.getHours().toString().padStart(2, '0')
       }:00\n🎯 Уровень: ${
         session.levelTag
-      }\n🏟️ ${
+      }\n${
         getVenueName(venueKey) || ''
       }\n\n👥 Выбери вместимость игры:`, {
       reply_markup: {
@@ -191,7 +191,7 @@ export class GameCreationWizard {
 
   static async handleCapacitySelection(ctx: Context, capacity: number): Promise<void> {
     const telegramId = ctx.from!.id;
-    const session = this.sessions.get(telegramId);
+    const session = GameCreationWizard.sessions.get(telegramId);
     if (!session || !session.date || !session.levelTag || !session.userId) {
       await ctx.editMessageText('Сессия истекла. Начни заново с /newgame');
       return;
@@ -206,7 +206,7 @@ export class GameCreationWizard {
         session.date.getHours().toString().padStart(2, '0')
       }:00\n🎯 Уровень: ${
         session.levelTag
-      }\n🏟️ ${
+      }\n${
         getVenueName((session as any).venueKey) || ''
       }\n👥 Вместимость: ${
         capacity
@@ -224,7 +224,7 @@ export class GameCreationWizard {
 
   static async handlePriceSelection(ctx: Context, price: string): Promise<void> {
     const telegramId = ctx.from!.id;
-    const session = this.sessions.get(telegramId);
+    const session = GameCreationWizard.sessions.get(telegramId);
     if (!session || !session.date || !session.levelTag || !session.userId || !session.capacity) {
       await ctx.editMessageText('Сессия истекла. Начни заново с /newgame');
       return;
@@ -237,7 +237,7 @@ export class GameCreationWizard {
 
     if (gameTimeInUserTz <= nowInUserTz) {
       await ctx.editMessageText('❌ Ошибка: время игры не может быть в прошлом. Начни заново с /newgame');
-      this.sessions.delete(telegramId);
+      GameCreationWizard.sessions.delete(telegramId);
       return;
     }
 
@@ -260,14 +260,14 @@ export class GameCreationWizard {
       });
 
       // Очищаем сессию
-      this.sessions.delete(telegramId);
+      GameCreationWizard.sessions.delete(telegramId);
 
       await ctx.editMessageText(
         `✅ Игра создана!\n\n📅 ${
           formatGameTimeForNotification(session.date)
         }\n🎯 Уровень: ${
           session.levelTag
-        }\n🏟️ ${
+        }\n${
           getVenueName(venueId) || ''
         }\n👥 Вместимость: ${
           session.capacity
@@ -310,7 +310,7 @@ export class GameCreationWizard {
   }
 
   static clearSession(telegramId: number): void {
-    this.sessions.delete(telegramId);
+    GameCreationWizard.sessions.delete(telegramId);
   }
 }
 

@@ -9,7 +9,8 @@ export enum PaymentStatus {
   paid = 'paid'
 }
 
-import { DomainError, ERROR_CODES } from './errors.js';
+import { ERROR_CODES } from './errors.js';
+import { BusinessRuleError } from './errors/business-rule-error.js';
 import type { Game } from './game.js';
 
 export class Registration {
@@ -28,8 +29,8 @@ export class Registration {
   }
 
   markPaid(game: Game) {
-    if (!game.isPaymentWindowOpen) throw new DomainError(ERROR_CODES.PAYMENT_WINDOW_NOT_OPEN, 'Окно оплаты еще не открыто');
-    if (this.status !== RegStatus.confirmed) throw new DomainError(ERROR_CODES.NOT_CONFIRMED, 'Только подтвержденные участники могут отмечать оплату');
+    if (!game.isPaymentWindowOpen) throw new BusinessRuleError(ERROR_CODES.PAYMENT_WINDOW_NOT_OPEN, 'Окно оплаты еще не открыто');
+    if (this.status !== RegStatus.confirmed) throw new BusinessRuleError(ERROR_CODES.NOT_CONFIRMED, 'Только подтвержденные участники могут отмечать оплату');
     this.paymentStatus = PaymentStatus.paid;
     this.paymentMarkedAt = new Date();
   }

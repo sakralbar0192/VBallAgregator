@@ -6,7 +6,8 @@ export enum GameStatus {
   canceled = 'canceled' // Игра отменена
 }
 
-import { DomainError, ERROR_CODES } from './errors.js';
+import { ERROR_CODES } from './errors.js';
+import { BusinessRuleError } from './errors/business-rule-error.js';
 
 // Доменная сущность "Игра" - Aggregate Root
 export class Game {
@@ -32,10 +33,10 @@ export class Game {
 
   // Бизнес-правило: проверка возможности записи на игру
   ensureCanJoin(confirmedCount: number) {
-    if (this.status !== GameStatus.open) throw new DomainError(ERROR_CODES.GAME_NOT_OPEN, 'Игра не открыта для записи');
+    if (this.status !== GameStatus.open) throw new BusinessRuleError(ERROR_CODES.GAME_NOT_OPEN, 'Игра не открыта для записи');
     // NOTE: Время игры хранится в UTC, сравниваем с текущим временем в UTC
-    if (this.startsAt <= new Date()) throw new DomainError(ERROR_CODES.GAME_ALREADY_STARTED, 'Игра уже началась');
-    if (confirmedCount >= this.capacity) throw new DomainError(ERROR_CODES.CAPACITY_REACHED, 'Достигнута максимальная вместимость');
+    if (this.startsAt <= new Date()) throw new BusinessRuleError(ERROR_CODES.GAME_ALREADY_STARTED, 'Игра уже началась');
+    if (confirmedCount >= this.capacity) throw new BusinessRuleError(ERROR_CODES.CAPACITY_REACHED, 'Достигнута максимальная вместимость');
   }
 
   // Методы изменения статуса игры

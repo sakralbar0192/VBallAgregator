@@ -23,7 +23,7 @@ export class GameManagementHandler extends BaseHandler {
    * Показывает подробную информацию об игре
    */
   static async handleGameInfo(ctx: Context, gameId: string): Promise<void> {
-    if (!this.validateGameId(gameId)) {
+    if (!GameManagementHandler.validateGameId(gameId)) {
       await ctx.reply('Неверный формат ID игры');
       return;
     }
@@ -35,7 +35,7 @@ export class GameManagementHandler extends BaseHandler {
    * Позволяет пользователю записаться на игру
    */
   static async handleJoin(ctx: Context, gameId: string): Promise<void> {
-    if (!this.validateGameId(gameId)) {
+    if (!GameManagementHandler.validateGameId(gameId)) {
       await ctx.reply('Неверный формат ID игры');
       return;
     }
@@ -47,7 +47,7 @@ export class GameManagementHandler extends BaseHandler {
    * Закрывает игру (только для организатора)
    */
   static async handleClose(ctx: Context, gameId: string): Promise<void> {
-    if (!this.validateGameId(gameId)) {
+    if (!GameManagementHandler.validateGameId(gameId)) {
       await ctx.reply('Неверный формат ID игры');
       return;
     }
@@ -59,7 +59,7 @@ export class GameManagementHandler extends BaseHandler {
    * Отменяет запись на игру
    */
   static async handleLeave(ctx: Context, gameId: string): Promise<void> {
-    if (!this.validateGameId(gameId)) {
+    if (!GameManagementHandler.validateGameId(gameId)) {
       await ctx.reply('Неверный формат ID игры');
       return;
     }
@@ -82,11 +82,11 @@ export class GameManagementHandler extends BaseHandler {
     }
 
     if (action.startsWith('join_game_')) {
-      await this.handleJoin(ctx, gameId);
+      await GameManagementHandler.handleJoin(ctx, gameId);
     } else if (action.startsWith('leave_game_')) {
-      await this.handleLeave(ctx, gameId);
+      await GameManagementHandler.handleLeave(ctx, gameId);
     } else if (action.startsWith('close_game_')) {
-      await this.handleClose(ctx, gameId);
+      await GameManagementHandler.handleClose(ctx, gameId);
     } else if (action.startsWith('pay_game_')) {
       await CommandHandlers.handlePay(ctx, gameId);
     } else if (action.startsWith('payments_game_')) {

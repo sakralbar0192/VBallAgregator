@@ -1,6 +1,6 @@
 import { Context } from 'telegraf';
 import { z } from 'zod';
-import { joinGame, leaveGame, markPayment, listGames, closeGame } from '../application/use-cases.js';
+import { joinGame, leaveGame, markPayment, listGames, closeGame, selectOrganizers, confirmPlayer, rejectPlayer, getOrganizerPlayers, respondToGameInvitation } from '../application/use-cases.js';
 import { prisma } from '../infrastructure/prisma.js';
 import { formatGameTimeForNotification, formatDateForButton } from '../shared/date-utils.js';
 import { ErrorHandler } from '../shared/error-handler.js';
@@ -10,8 +10,54 @@ import { getVenueName, getRegistrationStatusName, getPaymentStatusName, getGameS
 const GameIdSchema = z.string().uuid();
 
 export class CommandHandlers {
+  static async handleGameInfo(ctx: Context, gameId: string): Promise<void> {
+    const validationResult = GameIdSchema.safeParse(gameId);
+    if (!validationResult.success) {
+      await ctx.reply('Неверный формат ID игры. Используй UUID.');
+      return;
+    }
+
+    const game = await prisma.game.findUnique({
+      where: { id: gameId },
+      include: {
+        organizer: true,
+        registrations: {
+          include: { user: true }
+        }
+      }
+    });
+
+    if (!game) {
+      await ctx.reply('Игра не найдена');
+      return;
+    }
+
+    const date = formatGameTimeForNotification(game.startsAt);
+    const status = getGameStatusName(game.status);
+    const level = game.levelTag ? ` (${game.levelTag})` : '';
+    const price = game.priceText ? ` - ${game.priceText}` : '';
+    const venue = getVenueName(game.venueId);
+    const organizer = game.organizer.title
+
+    const confirmedCount = game.registrations.filter((r: any) => r.status === 'confirmed').length;
+    const waitlistedCount = game.registrations.filter((r: any) => r.status === 'waitlisted').length;
+
+    const organizerName = getOrganizerName(game);
+
+    let message = `🎾 ${date}${level}${price}\n${venue}\n${status}\n${organizer}\n\n`;
+    message += `Участников: ${confirmedCount}/${game.capacity}\n`;
+    if (waitlistedCount > 0) {
+      message += `В ожидании: ${waitlistedCount}\n`;
+    }
+    message += `${organizerName}ID: \`${game.id}\``;
+
+    await ctx.reply(message, { parse_mode: 'Markdown' });
+  }
+
   static async handleGames(ctx: Context): Promise<void> {
-    const games = await listGames();
+    const user = await prisma.user.findUnique({ where: { telegramId: ctx.from!.id } });
+    const userId = user?.id;
+    const games = await listGames(userId);
 
     if (games.length === 0) {
       const user = await prisma.user.findUnique({ where: { telegramId: ctx.from!.id } });
@@ -391,7 +437,8 @@ export class CommandHandlers {
           { text: '🎾 Игры', callback_data: 'settings_games' }
         ],
         [
-          { text: '👥 Организатор', callback_data: 'settings_organizer' }
+          { text: '👥 Организатор', callback_data: 'settings_organizer' },
+          { text: '🔗 Выбрать организаторов', callback_data: 'settings_select_organizers' }
         ]
       ];
 
@@ -400,6 +447,409 @@ export class CommandHandlers {
       });
     } catch (error) {
       await ctx.reply('Не удалось загрузить настройки');
+    }
+  }
+
+  static async handleSelectOrganizers(ctx: Context, organizerIds: string): Promise<void> {
+    const user = await prisma.user.findUnique({ where: { telegramId: ctx.from!.id } });
+    if (!user) {
+      await ctx.reply('Сначала зарегистрируйся командой /start');
+      return;
+    }
+
+    const ids = organizerIds.split(',').map(id => id.trim()).filter(id => id);
+    if (ids.length === 0) {
+      await ctx.reply('Укажи ID организаторов через запятую. Пример: /selectorganizers uuid1,uuid2');
+      return;
+    }
+
+    try {
+      await selectOrganizers(user.id, ids);
+      await ctx.reply('Запросы отправлены организаторам. Ожидай подтверждения ✅');
+    } catch (error: any) {
+      await ctx.reply(ErrorHandler.mapToUserMessage(error));
+    }
+  }
+
+  static async handleMyOrganizers(ctx: Context): Promise<void> {
+    const user = await prisma.user.findUnique({ where: { telegramId: ctx.from!.id } });
+    if (!user) {
+      await ctx.reply('Сначала зарегистрируйся командой /start');
+      return;
+    }
+
+    try {
+      // Получить все связи игрока с организаторами
+      const playerOrganizers = await (prisma as any).playerOrganizer.findMany({
+        where: { playerId: user.id },
+        include: {
+          organizer: {
+            include: { user: true }
+          }
+        },
+        orderBy: { requestedAt: 'desc' }
+      });
+
+      if (playerOrganizers.length === 0) {
+        await ctx.reply('У тебя нет связей с организаторами. Выбери организаторов командой /selectorganizers');
+        return;
+      }
+
+      const organizersList = playerOrganizers.map((po: any) => {
+        const statusText = po.status === 'confirmed' ? '✅ Подтвержден' :
+                          po.status === 'pending' ? '⏳ Ожидает' : '❌ Отклонен';
+        const organizerName = po.organizer.title || po.organizer.user.name;
+        return `${organizerName}: ${statusText}`;
+      }).join('\n');
+
+      await ctx.reply(`👥 Мои организаторы:\n\n${organizersList}`, { parse_mode: 'Markdown' });
+    } catch (error: any) {
+      await ctx.reply('Не удалось получить список организаторов');
+    }
+  }
+
+  static async handleRespondToGame(ctx: Context, args: string): Promise<void> {
+    const user = await prisma.user.findUnique({ where: { telegramId: ctx.from!.id } });
+    if (!user) {
+      await ctx.reply('Сначала зарегистрируйся командой /start');
+      return;
+    }
+
+    const parts = args.split(' ');
+    if (parts.length !== 2) {
+      await ctx.reply('Формат: /respondtogame <game_id> <yes/no>');
+      return;
+    }
+
+    const [gameId, response] = parts;
+    const validationResult = GameIdSchema.safeParse(gameId);
+    if (!validationResult.success) {
+      await ctx.reply('Неверный формат ID игры');
+      return;
+    }
+
+    if (!response || !['yes', 'no'].includes(response.toLowerCase())) {
+      await ctx.reply('Ответ должен быть "yes" или "no"');
+      return;
+    }
+
+    try {
+      await respondToGameInvitation(gameId || "", user.id!, response.toLowerCase());
+      const responseText = response.toLowerCase() === 'yes' ? '✅ Да' : '❌ Нет';
+      await ctx.reply(`Ответ "${responseText}" отправлен организатору`);
+    } catch (error: any) {
+      await ctx.reply(ErrorHandler.mapToUserMessage(error));
+    }
+  }
+
+  static async handleMyPlayers(ctx: Context): Promise<void> {
+    const user = await prisma.user.findUnique({ where: { telegramId: ctx.from!.id } });
+    if (!user) {
+      await ctx.reply('Сначала зарегистрируйся командой /start');
+      return;
+    }
+
+    const organizer = await prisma.organizer.findUnique({ where: { userId: user.id } });
+    if (!organizer) {
+      await ctx.reply('Ты не зарегистрирован как организатор');
+      return;
+    }
+
+    try {
+      const players = await getOrganizerPlayers(organizer.id, 'confirmed');
+
+      if (players.length === 0) {
+        await ctx.reply('У тебя нет подтвержденных игроков. Используй /pendingplayers для просмотра ожидающих подтверждения');
+        return;
+      }
+
+      const playersList = players.map((player: any) =>
+        `${player.playerName} (${player.levelTag || 'Без уровня'})`
+      ).join('\n');
+
+      await ctx.reply(`👥 Мои подтвержденные игроки:\n\n${playersList}`, { parse_mode: 'Markdown' });
+    } catch (error: any) {
+      await ctx.reply('Не удалось получить список игроков');
+    }
+  }
+
+  static async handlePendingPlayers(ctx: Context): Promise<void> {
+    const user = await prisma.user.findUnique({ where: { telegramId: ctx.from!.id } });
+    if (!user) {
+      await ctx.reply('Сначала зарегистрируйся командой /start');
+      return;
+    }
+
+    const organizer = await prisma.organizer.findUnique({ where: { userId: user.id } });
+    if (!organizer) {
+      await ctx.reply('Ты не зарегистрирован как организатор');
+      return;
+    }
+
+    try {
+      const players = await getOrganizerPlayers(organizer.id, 'pending');
+
+      if (players.length === 0) {
+        await ctx.reply('Нет игроков, ожидающих подтверждения');
+        return;
+      }
+
+      const playersList = players.map((player: any) =>
+        `${player.playerName} (${player.levelTag || 'Без уровня'})`
+      ).join('\n');
+
+      const message = `⏳ Игроки, ожидающие подтверждения:\n\n${playersList}`;
+
+      // Создать кнопки для каждого игрока
+      const buttons = players.map((player: any) => [
+        {
+          text: `✅ ${player.playerName}`,
+          callback_data: `confirm_player_${player.playerId}`
+        },
+        {
+          text: `❌ ${player.playerName}`,
+          callback_data: `reject_player_${player.playerId}`
+        }
+      ]);
+
+      await ctx.reply(message, {
+        reply_markup: { inline_keyboard: buttons }
+      });
+    } catch (error: any) {
+      await ctx.reply('Не удалось получить список игроков');
+    }
+  }
+
+  static async handleConfirmPlayer(ctx: Context, playerId: string): Promise<void> {
+    const user = await prisma.user.findUnique({ where: { telegramId: ctx.from!.id } });
+    if (!user) {
+      await ctx.reply('Сначала зарегистрируйся командой /start');
+      return;
+    }
+
+    const organizer = await prisma.organizer.findUnique({ where: { userId: user.id } });
+    if (!organizer) {
+      await ctx.reply('Ты не зарегистрирован как организатор');
+      return;
+    }
+
+    const validationResult = z.string().uuid().safeParse(playerId);
+    if (!validationResult.success) {
+      await ctx.reply('Неверный формат ID игрока');
+      return;
+    }
+
+    try {
+      await confirmPlayer(organizer.id, playerId);
+      await ctx.reply('Игрок подтвержден ✅');
+    } catch (error: any) {
+      await ctx.reply(ErrorHandler.mapToUserMessage(error));
+    }
+  }
+
+  static async handleRejectPlayer(ctx: Context, playerId: string): Promise<void> {
+    const user = await prisma.user.findUnique({ where: { telegramId: ctx.from!.id } });
+    if (!user) {
+      await ctx.reply('Сначала зарегистрируйся командой /start');
+      return;
+    }
+
+    const organizer = await prisma.organizer.findUnique({ where: { userId: user.id } });
+    if (!organizer) {
+      await ctx.reply('Ты не зарегистрирован как организатор');
+      return;
+    }
+
+    const validationResult = z.string().uuid().safeParse(playerId);
+    if (!validationResult.success) {
+      await ctx.reply('Неверный формат ID игрока');
+      return;
+    }
+
+    try {
+      await rejectPlayer(organizer.id, playerId);
+      await ctx.reply('Игрок отклонен ❌');
+    } catch (error: any) {
+      await ctx.reply(ErrorHandler.mapToUserMessage(error));
+    }
+  }
+
+  static async handleHelp(ctx: Context): Promise<void> {
+    const telegramId = ctx.from!.id;
+
+    const user = await prisma.user.findUnique({ where: { telegramId } });
+    if (!user) {
+      await ctx.reply('Сначала зарегистрируйся командой /start');
+      return;
+    }
+
+    const isOrganizer = await prisma.organizer.findUnique({ where: { userId: user.id } });
+
+    // Проверить, является ли пользователь игроком
+    const hasPlayerRegistrations = user.levelTag;
+
+    let helpText = '🎾 Доступные команды:\n\n';
+
+    // Общие команды
+    helpText += 'Общие команды:\n';
+    helpText += '/start - Регистрация в боте\n';
+    helpText += '/games - Список активных игр\n';
+    helpText += '/game ID - Информация об игре\n';
+    helpText += '/my - Мои игры и регистрации\n\n';
+
+    // Команды для игроков, если пользователь имеет регистрации
+    if (hasPlayerRegistrations) {
+      helpText += 'Команды для игроков:\n';
+      helpText += '/join ID - Записаться на игру\n';
+      helpText += '/leave ID - Отменить запись\n';
+      helpText += '/pay ID - Отметить оплату\n';
+      helpText += '/selectorganizers - Выбрать организаторов\n';
+      helpText += '/myorganizers - Мои организаторы\n';
+      helpText += '/respondtogame GAME_ID yes/no - Ответить на приглашение\n\n';
+    }
+
+    // Команды для организаторов
+    if (isOrganizer) {
+      helpText += 'Команды для организаторов:\n';
+      helpText += '/newgame - Создать новую игру\n';
+      helpText += '/close ID - Закрыть запись на игру\n';
+      helpText += '/payments ID - Статус оплат участников\n';
+      helpText += '/myplayers - Мои подтвержденные игроки\n';
+      helpText += '/pendingplayers - Игроки, ожидающие подтверждения\n';
+    }
+
+    await ctx.reply(helpText);
+  }
+
+  static async handleSelectOrganizersSettings(ctx: Context): Promise<void> {
+    const user = await prisma.user.findUnique({ where: { telegramId: ctx.from!.id } });
+    if (!user) {
+      await ctx.reply('Сначала зарегистрируйся командой /start');
+      return;
+    }
+
+    try {
+      // Получить всех организаторов
+      const organizers = await prisma.organizer.findMany({
+        include: { user: true },
+        orderBy: { user: { name: 'asc' } }
+      });
+
+      if (organizers.length === 0) {
+        await ctx.reply('Нет доступных организаторов');
+        return;
+      }
+
+      // Получить текущие связи пользователя с организаторами
+      const playerOrganizers = await (prisma as any).playerOrganizer.findMany({
+        where: { playerId: user.id },
+        select: { organizerId: true }
+      });
+      const selectedOrganizerIds = new Set(playerOrganizers.map((po: any) => po.organizerId));
+
+      // Создать кнопки для каждого организатора
+      const buttons = organizers.map((org: any) => {
+        const isSelected = selectedOrganizerIds.has(org.id);
+        const checkmark = isSelected ? '✅' : '☐';
+        const organizerName = org.title || org.user.name;
+        return [
+          {
+            text: `${checkmark} ${organizerName}`,
+            callback_data: `toggle_organizer_${org.id}`
+          }
+        ];
+      });
+
+      // Добавить кнопку "Готово"
+      buttons.push([
+        { text: '✅ Готово', callback_data: 'organizers_done' }
+      ]);
+
+      await ctx.reply('🔗 Выбери организаторов:', {
+        reply_markup: { inline_keyboard: buttons }
+      });
+    } catch (error: any) {
+      await ctx.reply('Не удалось загрузить список организаторов');
+    }
+  }
+
+  static async handleToggleOrganizer(ctx: Context, organizerId: string): Promise<void> {
+    const user = await prisma.user.findUnique({ where: { telegramId: ctx.from!.id } });
+    if (!user) {
+      await ctx.answerCbQuery('Пользователь не найден');
+      return;
+    }
+
+    try {
+      // Проверить, существует ли уже связь
+      const existingLink = await (prisma as any).playerOrganizer.findUnique({
+        where: { playerId_organizerId: { playerId: user.id, organizerId } }
+      });
+
+      if (existingLink) {
+        // Удалить связь
+        await (prisma as any).playerOrganizer.delete({
+          where: { playerId_organizerId: { playerId: user.id, organizerId } }
+        });
+      } else {
+        // Создать новую связь со статусом pending
+        await (prisma as any).playerOrganizer.create({
+          data: {
+            playerId: user.id,
+            organizerId,
+            status: 'pending'
+          }
+        });
+
+        // Отправить событие о выборе организатора
+        const { EventBus } = await import('../shared/event-bus.js');
+        const eventBus = EventBus.getInstance();
+        await eventBus.publish({
+          type: 'PlayerSelectedOrganizers',
+          occurredAt: new Date(),
+          id: '',
+          payload: { playerId: user.id, organizerIds: [organizerId] }
+        });
+      }
+
+      // Получить всех организаторов
+      const organizers = await prisma.organizer.findMany({
+        include: { user: true },
+        orderBy: { user: { name: 'asc' } }
+      });
+
+      // Получить текущие связи пользователя с организаторами
+      const playerOrganizers = await (prisma as any).playerOrganizer.findMany({
+        where: { playerId: user.id },
+        select: { organizerId: true }
+      });
+      const selectedOrganizerIds = new Set(playerOrganizers.map((po: any) => po.organizerId));
+
+      // Создать кнопки для каждого организатора
+      const buttons = organizers.map((org: any) => {
+        const isSelected = selectedOrganizerIds.has(org.id);
+        const checkmark = isSelected ? '✅' : '☐';
+        const organizerName = org.title || org.user.name;
+        return [
+          {
+            text: `${checkmark} ${organizerName}`,
+            callback_data: `toggle_organizer_${org.id}`
+          }
+        ];
+      });
+
+      // Добавить кнопку "Готово"
+      buttons.push([
+        { text: '✅ Готово', callback_data: 'organizers_done' }
+      ]);
+
+      // Обновить сообщение вместо отправки нового
+      await ctx.editMessageText('🔗 Выбери организаторов:', {
+        reply_markup: { inline_keyboard: buttons }
+      });
+      await ctx.answerCbQuery('✅ Выбор обновлен');
+    } catch (error: any) {
+      await ctx.answerCbQuery('Ошибка при обновлении выбора');
     }
   }
 }

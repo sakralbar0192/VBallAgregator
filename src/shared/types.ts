@@ -11,4 +11,10 @@ export type DomainEvent =
   | { type: 'PaymentAttemptRejectedEarly'; payload: { gameId: string; userId: string } }
   | { type: 'RegistrationCanceled'; payload: { gameId: string; userId: string } }
   | { type: 'GameClosed'; payload: { gameId: string } }
-  | { type: 'PlayerLinkedToOrganizer'; payload: { playerId: string; organizerId: string; playerName: string } };
+  | { type: 'PlayerLinkedToOrganizer'; payload: { playerId: string; organizerId: string; playerName: string } }
+  | { type: 'PlayerSelectedOrganizers'; payload: { playerId: string; organizerIds: string[] } }
+  | { type: 'PlayerConfirmedByOrganizer'; payload: { organizerId: string; playerId: string; playerName: string } }
+  | { type: 'PlayerRejectedByOrganizer'; payload: { organizerId: string; playerId: string; playerName: string } }
+  | { type: 'GameCreatedWithPriorityWindow'; payload: { gameId: string; priorityWindowClosesAt: string; confirmedPlayers: Array<{ playerId: string; telegramId: bigint }> } }
+  | { type: 'PlayerRespondedToGameInvitation'; payload: { gameId: string; playerId: string; response: string } }
+  | { type: 'GamePublishedForAll'; payload: { gameId: string } };

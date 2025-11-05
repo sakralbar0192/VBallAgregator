@@ -6,6 +6,7 @@ import { logger } from './logger.js';
 export class SchedulerService {
   private reminderQueue: Queue;
   private paymentReminderQueue: Queue;
+  private priorityWindowQueue: Queue;
   private workers: Worker[] = [];
 
   constructor(private eventBus: EventBus) {
@@ -23,6 +24,19 @@ export class SchedulerService {
     });
 
     this.paymentReminderQueue = new Queue('payment-reminders', {
+      connection: config.redis,
+      defaultJobOptions: {
+        removeOnComplete: config.queues.removeOnComplete,
+        removeOnFail: config.queues.removeOnFail,
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 2000,
+        },
+      },
+    });
+
+    this.priorityWindowQueue = new Queue('priority-window-checks', {
       connection: config.redis,
       defaultJobOptions: {
         removeOnComplete: config.queues.removeOnComplete,
@@ -93,6 +107,25 @@ export class SchedulerService {
     });
   }
 
+  async schedulePriorityWindowCheck(gameId: string, closesAt: Date): Promise<void> {
+    const delay = closesAt.getTime() - Date.now();
+    if (delay <= 0) return;
+
+    await this.priorityWindowQueue.add(
+      'priority-window-check',
+      { gameId },
+      {
+        delay,
+        jobId: `priority-window-check-${gameId}`,
+      }
+    );
+
+    logger.info('Scheduled priority window check', {
+      gameId,
+      scheduledFor: closesAt.toISOString()
+    });
+  }
+
   initializeWorkers(): void {
     // Game reminders worker
     const reminderWorker = new Worker(
@@ -118,7 +151,19 @@ export class SchedulerService {
       }
     );
 
-    this.workers = [reminderWorker, paymentWorker];
+    // Priority window check worker
+    const priorityWindowWorker = new Worker(
+      'priority-window-checks',
+      async (job: Job) => {
+        await this.processPriorityWindowCheckJob(job);
+      },
+      {
+        connection: config.redis,
+        concurrency: config.queues.concurrency,
+      }
+    );
+
+    this.workers = [reminderWorker, paymentWorker, priorityWindowWorker];
 
     // Error handling
     this.workers.forEach(worker => {
@@ -183,8 +228,20 @@ export class SchedulerService {
     }
   }
 
+  private async processPriorityWindowCheckJob(job: Job): Promise<void> {
+    const { gameId } = job.data;
+
+    if (job.name === 'priority-window-check') {
+      // Импортируем use-case для проверки истечения окна
+      const { checkPriorityWindowExpiration } = await import('../application/use-cases.js');
+      await checkPriorityWindowExpiration(gameId);
+    } else {
+      logger.warn('Unknown priority window check job type', { jobName: job.name });
+    }
+  }
+
   async getQueueStats() {
-    const [reminderStats, paymentStats] = await Promise.all([
+    const [reminderStats, paymentStats, priorityWindowStats] = await Promise.all([
       {
         name: 'game-reminders',
         waiting: await this.reminderQueue.getWaiting(),
@@ -199,9 +256,16 @@ export class SchedulerService {
         completed: await this.paymentReminderQueue.getCompleted(),
         failed: await this.paymentReminderQueue.getFailed(),
       },
+      {
+        name: 'priority-window-checks',
+        waiting: await this.priorityWindowQueue.getWaiting(),
+        active: await this.priorityWindowQueue.getActive(),
+        completed: await this.priorityWindowQueue.getCompleted(),
+        failed: await this.priorityWindowQueue.getFailed(),
+      },
     ]);
 
-    return { reminderStats, paymentStats };
+    return { reminderStats, paymentStats, priorityWindowStats };
   }
 
   async close(): Promise<void> {
@@ -209,6 +273,7 @@ export class SchedulerService {
       ...this.workers.map(worker => worker.close()),
       this.reminderQueue.close(),
       this.paymentReminderQueue.close(),
+      this.priorityWindowQueue.close(),
     ]);
   }
 }

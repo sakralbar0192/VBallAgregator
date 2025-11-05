@@ -75,7 +75,20 @@ bot.action(/^level_(.+)$/, async (ctx) => {
 
   await updateUserLevel(user.id!, level);
 
-  await ctx.editMessageText('Отлично! Теперь ты можешь искать игры командой /games');
+  // Проверить, есть ли организаторы в сервисе
+  const organizersCount = await prisma.organizer.count();
+  if (organizersCount > 0) {
+    await ctx.editMessageText('Отлично! Хочешь выбрать организаторов для приоритетных приглашений на игры?', {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔗 Выбрать организаторов', callback_data: 'select_organizers_registration' }],
+          [{ text: '✅ Завершить регистрацию', callback_data: 'finish_registration' }]
+        ]
+      }
+    });
+  } else {
+    await ctx.editMessageText('Отлично! Теперь ты можешь искать игры командой /games');
+  }
 });
 
 /**
@@ -104,6 +117,31 @@ bot.action('role_organizer', async (ctx) => {
  */
 bot.command('games', async (ctx) => {
   await CommandHandlers.handleGames(ctx);
+});
+
+/**
+ * Обработчик команды /help
+ * Показывает доступные команды в зависимости от роли пользователя
+ * @param ctx - Контекст Telegraf
+ */
+bot.command('help', async (ctx) => {
+  await CommandHandlers.handleHelp(ctx);
+});
+
+/**
+ * Обработчик команды /game <game_id>
+ * Показывает подробную информацию об игре
+ * @param ctx - Контекст Telegraf
+ * @param gameId - UUID игры
+ */
+bot.command('game', async (ctx) => {
+  const args = ctx.message.text.split(' ');
+  if (args.length < 2) {
+    return ctx.reply('Использование: /game <game_id>');
+  }
+
+  const gameId = args[1] || "";
+  await CommandHandlers.handleGameInfo(ctx, gameId);
 });
 
 /**
@@ -277,6 +315,53 @@ bot.command('payments', async (ctx) => {
   await CommandHandlers.handlePayments(ctx, gameId);
 });
 
+/**
+ * Обработчик команды /myorganizers
+ * Показывает список организаторов игрока
+ * @param ctx - Контекст Telegraf
+ */
+bot.command('myorganizers', async (ctx) => {
+  await CommandHandlers.handleMyOrganizers(ctx);
+});
+
+/**
+ * Обработчик команды /respondtogame <game_id> <yes/no>
+ * Позволяет ответить на приглашение к игре
+ * @param ctx - Контекст Telegraf
+ * @param args - game_id и ответ (yes/no)
+ */
+bot.command('respondtogame', async (ctx) => {
+  const args = ctx.message.text.split(' ').slice(1).join(' ');
+  await CommandHandlers.handleRespondToGame(ctx, args);
+});
+
+/**
+ * Обработчик команды /myplayers
+ * Показывает подтвержденных игроков организатора
+ * @param ctx - Контекст Telegraf
+ */
+bot.command('myplayers', async (ctx) => {
+  await CommandHandlers.handleMyPlayers(ctx);
+});
+
+/**
+ * Обработчик команды /pendingplayers
+ * Показывает игроков, ожидающих подтверждения
+ * @param ctx - Контекст Telegraf
+ */
+bot.command('pendingplayers', async (ctx) => {
+  await CommandHandlers.handlePendingPlayers(ctx);
+});
+
+/**
+ * Обработчик действия selectorganizers
+ * Показывает список организаторов для выбора
+ * @param ctx - Контекст Telegraf
+ */
+bot.command('selectorganizers', async (ctx) => {
+  await CommandHandlers.handleSelectOrganizersSettings(ctx);
+});
+
 // Обработчик callback для напоминаний об оплате
 
 /**
@@ -370,10 +455,384 @@ bot.action(/^payments_game_(.+)$/, async (ctx) => {
   await CommandHandlers.handlePayments(ctx, gameId);
 });
 
+/**
+ * Обработчик действия toggle_organizer_*
+ * Переключает выбор организатора
+ * @param ctx - Контекст Telegraf
+ * @param organizerId - ID организатора
+ */
+bot.action(/^toggle_organizer_(.+)$/, async (ctx) => {
+  const organizerId = ctx.match[1] as string;
+  await CommandHandlers.handleToggleOrganizer(ctx, organizerId);
+});
+
+/**
+ * Обработчик действия organizers_done
+ * Завершает выбор организаторов
+ * @param ctx - Контекст Telegraf
+ */
+bot.action('organizers_done', async (ctx) => {
+  await ctx.answerCbQuery('✅ Выбор организаторов сохранен');
+  await ctx.editMessageText('🔗 Выбор организаторов сохранен. Организаторы получат запрос на подтверждение.');
+});
+
+/**
+ * Обработчик действия select_organizers_registration
+ * Показывает выбор организаторов после регистрации
+ * @param ctx - Контекст Telegraf
+ */
+bot.action('select_organizers_registration', async (ctx) => {
+  await CommandHandlers.handleSelectOrganizersSettings(ctx);
+});
+
+/**
+ * Обработчик действия finish_registration
+ * Завершает регистрацию без выбора организаторов
+ * @param ctx - Контекст Telegraf
+ */
+bot.action('finish_registration', async (ctx) => {
+  await ctx.editMessageText('Отлично! Теперь ты можешь искать игры командой /games');
+});
+
+/**
+ * Обработчик действия toggle_global
+ * Переключает глобальные уведомления
+ * @param ctx - Контекст Telegraf
+ */
+bot.action('toggle_global', async (ctx) => {
+  const user = await prisma.user.findUnique({ where: { telegramId: ctx.from!.id } });
+  if (!user) {
+    return ctx.answerCbQuery('Пользователь не найден');
+  }
+
+  try {
+    const { userPreferencesService } = await import('./shared/user-preferences-service.js');
+    const prefs = await userPreferencesService.getPreferences(user.id);
+    await userPreferencesService.updatePreferences(user.id, {
+      ...prefs,
+      globalNotifications: !prefs.globalNotifications
+    });
+
+    await ctx.answerCbQuery('✅ Настройки обновлены');
+    await CommandHandlers.handleSettings(ctx);
+  } catch (error) {
+    await ctx.answerCbQuery('Ошибка при обновлении настроек');
+  }
+});
+
+/**
+ * Обработчик действия settings_payments
+ * Показывает настройки уведомлений об оплате
+ * @param ctx - Контекст Telegraf
+ */
+bot.action('settings_payments', async (ctx) => {
+  const user = await prisma.user.findUnique({ where: { telegramId: ctx.from!.id } });
+  if (!user) {
+    return ctx.answerCbQuery('Пользователь не найден');
+  }
+
+  try {
+    const { userPreferencesService } = await import('./shared/user-preferences-service.js');
+    const prefs = await userPreferencesService.getPreferences(user.id);
+
+    const settingsText = `
+💰 Настройки уведомлений об оплате:
+
+🤖 Автоматические напоминания: ${prefs.paymentRemindersAuto ? '✅ Включены' : '❌ Отключены'}
+📢 Ручные напоминания: ${prefs.paymentRemindersManual ? '✅ Включены' : '❌ Отключены'}
+    `.trim();
+
+    const buttons = [
+      [
+        {
+          text: prefs.paymentRemindersAuto ? '❌ Отключить авто' : '✅ Включить авто',
+          callback_data: 'toggle_payment_auto'
+        }
+      ],
+      [
+        {
+          text: prefs.paymentRemindersManual ? '❌ Отключить ручные' : '✅ Включить ручные',
+          callback_data: 'toggle_payment_manual'
+        }
+      ],
+      [
+        { text: '⬅️ Назад', callback_data: 'back_to_settings' }
+      ]
+    ];
+
+    await ctx.editMessageText(settingsText, {
+      reply_markup: { inline_keyboard: buttons }
+    });
+  } catch (error) {
+    await ctx.answerCbQuery('Ошибка при загрузке настроек');
+  }
+});
+
+/**
+ * Обработчик действия settings_games
+ * Показывает настройки уведомлений об играх
+ * @param ctx - Контекст Telegraf
+ */
+bot.action('settings_games', async (ctx) => {
+  const user = await prisma.user.findUnique({ where: { telegramId: ctx.from!.id } });
+  if (!user) {
+    return ctx.answerCbQuery('Пользователь не найден');
+  }
+
+  try {
+    const { userPreferencesService } = await import('./shared/user-preferences-service.js');
+    const prefs = await userPreferencesService.getPreferences(user.id);
+
+    const settingsText = `
+🎾 Настройки уведомлений об играх:
+
+⏰ Напоминания за 24 часа: ${prefs.gameReminders24h ? '✅ Включены' : '❌ Отключены'}
+🚨 Напоминания за 2 часа: ${prefs.gameReminders2h ? '✅ Включены' : '❌ Отключены'}
+    `.trim();
+
+    const buttons = [
+      [
+        {
+          text: prefs.gameReminders24h ? '❌ Отключить 24ч' : '✅ Включить 24ч',
+          callback_data: 'toggle_game_24h'
+        }
+      ],
+      [
+        {
+          text: prefs.gameReminders2h ? '❌ Отключить 2ч' : '✅ Включить 2ч',
+          callback_data: 'toggle_game_2h'
+        }
+      ],
+      [
+        { text: '⬅️ Назад', callback_data: 'back_to_settings' }
+      ]
+    ];
+
+    await ctx.editMessageText(settingsText, {
+      reply_markup: { inline_keyboard: buttons }
+    });
+  } catch (error) {
+    await ctx.answerCbQuery('Ошибка при загрузке настроек');
+  }
+});
+
+/**
+ * Обработчик действия settings_organizer
+ * Показывает настройки уведомлений организатора
+ * @param ctx - Контекст Telegraf
+ */
+bot.action('settings_organizer', async (ctx) => {
+  const user = await prisma.user.findUnique({ where: { telegramId: ctx.from!.id } });
+  if (!user) {
+    return ctx.answerCbQuery('Пользователь не найден');
+  }
+
+  try {
+    const { userPreferencesService } = await import('./shared/user-preferences-service.js');
+    const prefs = await userPreferencesService.getPreferences(user.id);
+
+    const settingsText = `
+👥 Настройки уведомлений организатора:
+
+📬 Уведомления организатора: ${prefs.organizerNotifications ? '✅ Включены' : '❌ Отключены'}
+    `.trim();
+
+    const buttons = [
+      [
+        {
+          text: prefs.organizerNotifications ? '❌ Отключить' : '✅ Включить',
+          callback_data: 'toggle_organizer_notifications'
+        }
+      ],
+      [
+        { text: '⬅️ Назад', callback_data: 'back_to_settings' }
+      ]
+    ];
+
+    await ctx.editMessageText(settingsText, {
+      reply_markup: { inline_keyboard: buttons }
+    });
+  } catch (error) {
+    await ctx.answerCbQuery('Ошибка при загрузке настроек');
+  }
+});
+
+/**
+ * Обработчик действия back_to_settings
+ * Возвращает в главное меню настроек
+ * @param ctx - Контекст Telegraf
+ */
+bot.action('back_to_settings', async (ctx) => {
+  await CommandHandlers.handleSettings(ctx);
+});
+
+/**
+ * Обработчики переключения настроек
+ */
+bot.action('toggle_payment_auto', async (ctx) => {
+  const user = await prisma.user.findUnique({ where: { telegramId: ctx.from!.id } });
+  if (!user) return ctx.answerCbQuery('Пользователь не найден');
+
+  try {
+    const { userPreferencesService } = await import('./shared/user-preferences-service.js');
+    const prefs = await userPreferencesService.getPreferences(user.id);
+    await userPreferencesService.updatePreferences(user.id, {
+      ...prefs,
+      paymentRemindersAuto: !prefs.paymentRemindersAuto
+    });
+    await ctx.answerCbQuery('✅ Настройка обновлена');
+    await ctx.editMessageText('💰 Настройки уведомлений об оплате обновлены');
+  } catch (error) {
+    await ctx.answerCbQuery('Ошибка');
+  }
+});
+
+bot.action('toggle_payment_manual', async (ctx) => {
+  const user = await prisma.user.findUnique({ where: { telegramId: ctx.from!.id } });
+  if (!user) return ctx.answerCbQuery('Пользователь не найден');
+
+  try {
+    const { userPreferencesService } = await import('./shared/user-preferences-service.js');
+    const prefs = await userPreferencesService.getPreferences(user.id);
+    await userPreferencesService.updatePreferences(user.id, {
+      ...prefs,
+      paymentRemindersManual: !prefs.paymentRemindersManual
+    });
+    await ctx.answerCbQuery('✅ Настройка обновлена');
+    await ctx.editMessageText('💰 Настройки уведомлений об оплате обновлены');
+  } catch (error) {
+    await ctx.answerCbQuery('Ошибка');
+  }
+});
+
+bot.action('toggle_game_24h', async (ctx) => {
+  const user = await prisma.user.findUnique({ where: { telegramId: ctx.from!.id } });
+  if (!user) return ctx.answerCbQuery('Пользователь не найден');
+
+  try {
+    const { userPreferencesService } = await import('./shared/user-preferences-service.js');
+    const prefs = await userPreferencesService.getPreferences(user.id);
+    await userPreferencesService.updatePreferences(user.id, {
+      ...prefs,
+      gameReminders24h: !prefs.gameReminders24h
+    });
+    await ctx.answerCbQuery('✅ Настройка обновлена');
+    await ctx.editMessageText('🎾 Настройки уведомлений об играх обновлены');
+  } catch (error) {
+    await ctx.answerCbQuery('Ошибка');
+  }
+});
+
+bot.action('toggle_game_2h', async (ctx) => {
+  const user = await prisma.user.findUnique({ where: { telegramId: ctx.from!.id } });
+  if (!user) return ctx.answerCbQuery('Пользователь не найден');
+
+  try {
+    const { userPreferencesService } = await import('./shared/user-preferences-service.js');
+    const prefs = await userPreferencesService.getPreferences(user.id);
+    await userPreferencesService.updatePreferences(user.id, {
+      ...prefs,
+      gameReminders2h: !prefs.gameReminders2h
+    });
+    await ctx.answerCbQuery('✅ Настройка обновлена');
+    await ctx.editMessageText('🎾 Настройки уведомлений об играх обновлены');
+  } catch (error) {
+    await ctx.answerCbQuery('Ошибка');
+  }
+});
+
+bot.action('toggle_organizer_notifications', async (ctx) => {
+  const user = await prisma.user.findUnique({ where: { telegramId: ctx.from!.id } });
+  if (!user) return ctx.answerCbQuery('Пользователь не найден');
+
+  try {
+    const { userPreferencesService } = await import('./shared/user-preferences-service.js');
+    const prefs = await userPreferencesService.getPreferences(user.id);
+    await userPreferencesService.updatePreferences(user.id, {
+      ...prefs,
+      organizerNotifications: !prefs.organizerNotifications
+    });
+    await ctx.answerCbQuery('✅ Настройка обновлена');
+    await ctx.editMessageText('👥 Настройки уведомлений организатора обновлены');
+  } catch (error) {
+    await ctx.answerCbQuery('Ошибка');
+  }
+});
+
+/**
+ * Обработчик действия confirm_player_*
+ * Подтверждает игрока через кнопку
+ * @param ctx - Контекст Telegraf
+ * @param playerId - ID игрока
+ */
+bot.action(/^confirm_player_(.+)$/, async (ctx) => {
+  const playerId = ctx.match[1] as string;
+  await CommandHandlers.handleConfirmPlayer(ctx, playerId);
+  await ctx.answerCbQuery('✅ Игрок подтвержден');
+});
+
+/**
+ * Обработчик действия reject_player_*
+ * Отклоняет игрока через кнопку
+ * @param ctx - Контекст Telegraf
+ * @param playerId - ID игрока
+ */
+bot.action(/^reject_player_(.+)$/, async (ctx) => {
+  const playerId = ctx.match[1] as string;
+  await CommandHandlers.handleRejectPlayer(ctx, playerId);
+  await ctx.answerCbQuery('❌ Игрок отклонен');
+});
+
+/**
+ * Обработчик действия respond_game_*_yes
+ * Ответ "Да" на приглашение к игре
+ * @param ctx - Контекст Telegraf
+ * @param gameId - ID игры
+ */
+bot.action(/^respond_game_(.+)_yes$/, async (ctx) => {
+  const gameId = ctx.match[1] as string;
+  const user = await prisma.user.findUnique({ where: { telegramId: ctx.from!.id } });
+  if (!user) {
+    return ctx.answerCbQuery('Пользователь не найден');
+  }
+
+  try {
+    const { respondToGameInvitation } = await import('./application/use-cases.js');
+    await respondToGameInvitation(gameId, user.id, 'yes');
+    await ctx.answerCbQuery('✅ Ответ "Да" отправлен');
+    await ctx.editMessageText('✅ Вы ответили "Да" на приглашение!');
+  } catch (error: any) {
+    await ctx.answerCbQuery('Ошибка при отправке ответа');
+  }
+});
+
+/**
+ * Обработчик действия respond_game_*_no
+ * Ответ "Нет" на приглашение к игре
+ * @param ctx - Контекст Telegraf
+ * @param gameId - ID игры
+ */
+bot.action(/^respond_game_(.+)_no$/, async (ctx) => {
+  const gameId = ctx.match[1] as string;
+  const user = await prisma.user.findUnique({ where: { telegramId: ctx.from!.id } });
+  if (!user) {
+    return ctx.answerCbQuery('Пользователь не найден');
+  }
+
+  try {
+    const { respondToGameInvitation } = await import('./application/use-cases.js');
+    await respondToGameInvitation(gameId, user.id, 'no');
+    await ctx.answerCbQuery('❌ Ответ "Нет" отправлен');
+    await ctx.editMessageText('❌ Вы ответили "Нет" на приглашение!');
+  } catch (error: any) {
+    await ctx.answerCbQuery('Ошибка при отправке ответа');
+  }
+});
+
 bot.on('text', async (ctx) => {
   // Обработка неизвестных команд
   if (ctx.message.text?.startsWith('/')) {
-    await ctx.reply('Неизвестная команда. Доступные команды:\n/start - регистрация\n/games - список игр\n/join <id> - записаться\n/leave <id> - отменить запись\n/pay <id> - отметить оплату\n/newgame - создать игру\n/my - мои игры\n/payments <id> - статус оплат (организатор)\n/close <id> - закрыть игру (организатор)');
+    await ctx.reply('Неизвестная команда. Используй /help для просмотра доступных команд.');
   }
 });
 

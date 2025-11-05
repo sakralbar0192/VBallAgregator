@@ -46,6 +46,12 @@ describe('Integration Tests - Full User Journey', () => {
     expect(game.id).toBeDefined();
     expect(game.status).toBe(GameStatus.open);
 
+    // Update createdAt to be outside priority window
+    await prisma.game.update({
+      where: { id: game.id },
+      data: { createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000) }
+    });
+
     // Step 4: Player joins game
     const joinResult = await joinGame(game.id, playerResult.userId);
     expect(joinResult.status).toBe(RegStatus.confirmed);
@@ -99,6 +105,12 @@ describe('Integration Tests - Full User Journey', () => {
       levelTag: 'beginner'
     });
 
+    // Update createdAt to be outside priority window
+    await prisma.game.update({
+      where: { id: game.id },
+      data: { createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000) }
+    });
+
     // Step 3: First player joins (confirmed)
     await joinGame(game.id, player1Result.userId);
 
@@ -135,6 +147,12 @@ describe('Integration Tests - Full User Journey', () => {
       venueId: 'venue-1',
       startsAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // Future game
       capacity: 10
+    });
+
+    // Update createdAt to be outside priority window
+    await prisma.game.update({
+      where: { id: game.id },
+      data: { createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000) }
     });
 
     await joinGame(game.id, playerResult.userId);

@@ -12,6 +12,7 @@ export interface NotificationRequest {
   message: string;
   type: string;
   gameId?: string;
+  buttons?: Array<Array<{ text: string; callback_data: string }>>;
 }
 
 export interface NotificationResult {
@@ -28,7 +29,7 @@ export class EnhancedNotificationService {
   }
 
   async sendNotification(req: NotificationRequest): Promise<NotificationResult> {
-    const { userId, chatId, message, type, gameId } = req;
+    const { userId, chatId, message, type, gameId, buttons } = req;
 
     try {
       // 1. Check user preferences
@@ -60,7 +61,7 @@ export class EnhancedNotificationService {
       }
 
       // 4. Send the notification
-      await this.sendMessage(chatId, message, type);
+      await this.sendMessage(chatId, message, type, buttons);
 
       // 5. Consume rate limit quota
       await rateLimiter.consumeTelegramQuota();
@@ -125,12 +126,24 @@ export class EnhancedNotificationService {
     return result;
   }
 
-  async sendMessage(chatId: bigint | number, text: string, type: string = 'unknown'): Promise<void> {
+  async sendMessage(
+    chatId: bigint | number,
+    text: string,
+    type: string = 'unknown',
+    buttons?: Array<Array<{ text: string; callback_data: string }>>
+  ): Promise<void> {
     const maxRetries = config.notifications.maxRetries;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        await this.bot.telegram.sendMessage(Number(chatId), text);
+        const options: any = {};
+        if (buttons && buttons.length > 0) {
+          options.reply_markup = {
+            inline_keyboard: buttons
+          };
+        }
+
+        await this.bot.telegram.sendMessage(Number(chatId), text, options);
 
         // Metrics
         if (attempt === 0) {
@@ -149,7 +162,8 @@ export class EnhancedNotificationService {
           chatId,
           type,
           attempt: attempt + 1,
-          textLength: text.length
+          textLength: text.length,
+          hasButtons: !!buttons && buttons.length > 0
         });
         return;
 

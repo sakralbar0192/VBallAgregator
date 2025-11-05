@@ -13,7 +13,6 @@ export async function registerEventHandlers(eventBus: EventBus): Promise<void> {
   // Game reminder handlers
   eventBus.subscribe('GameReminder24h', { handle: handleGameReminder24h });
   eventBus.subscribe('GameReminder2h', { handle: handleGameReminder2h });
-  eventBus.subscribe('GameCreated', { handle: handleGameCreated });
 
   // Payment reminder handlers
   eventBus.subscribe('PaymentReminder12h', { handle: handlePaymentReminder12h });
@@ -30,6 +29,14 @@ export async function registerEventHandlers(eventBus: EventBus): Promise<void> {
   eventBus.subscribe('GameClosed', { handle: handleGameClosed });
   eventBus.subscribe('PlayerLinkedToOrganizer', { handle: handlePlayerLinkedToOrganizer });
   eventBus.subscribe('PaymentAttemptRejectedEarly', { handle: handlePaymentAttemptRejectedEarly });
+
+  // Player-Organizer relationship events
+  eventBus.subscribe('PlayerSelectedOrganizers', { handle: handlePlayerSelectedOrganizers });
+  eventBus.subscribe('PlayerConfirmedByOrganizer', { handle: handlePlayerConfirmedByOrganizer });
+  eventBus.subscribe('PlayerRejectedByOrganizer', { handle: handlePlayerRejectedByOrganizer });
+  eventBus.subscribe('GameCreatedWithPriorityWindow', { handle: handleGameCreatedWithPriorityWindow });
+  eventBus.subscribe('PlayerRespondedToGameInvitation', { handle: handlePlayerRespondedToGameInvitation });
+  eventBus.subscribe('GamePublishedForAll', { handle: handleGamePublishedForAll });
 
   logger.info('Event handlers setup completed');
 }
@@ -347,65 +354,6 @@ async function handlePaymentMarked(event: TypedDomainEvent) {
   }
 }
 
-async function handleGameCreated(event: TypedDomainEvent) {
-  if (event.type !== 'GameCreated') return;
-  const { gameId } = event.payload;
-  logger.info('Processing GameCreated', { gameId });
-
-  const game = await prisma.game.findUnique({
-    where: { id: gameId },
-    include: {
-      organizer: { include: { user: true } }
-    }
-  });
-
-  if (!game) {
-    logger.warn('Game not found for new game notifications', { gameId });
-    return;
-  }
-
-  // Найти подходящих игроков: активные пользователи, которые не являются организатором этой игры
-  const suitableUsers = await prisma.user.findMany({
-    where: {
-      id: { not: game.organizer.userId } // Исключаем организатора
-    },
-    include: {
-      notificationPreferences: true
-    }
-  });
-
-  // Фильтруем пользователей без Telegram ID на уровне приложения
-  const filteredUsers = suitableUsers.filter(user => user.telegramId !== null);
-
-  const message = `🎾 Новая игра!\n${formatGameTimeForNotification(game.startsAt)}\n🏟️ ${game.levelTag || 'Общий уровень'}\n💰 ${game.priceText || 'По согласованию с организатором'}\n${getOrganizerName(game)}\nПрисоединиться: /join ${gameId}`;
-
-  const notifications = filteredUsers
-    .filter(user => {
-      // Проверяем настройки уведомлений
-      const prefs = (user as any).notificationPreferences;
-      return prefs?.globalNotifications !== false;
-    })
-    .map(user => ({
-      userId: user.id,
-      chatId: user.telegramId!,
-      message,
-      type: 'new-game-notification',
-      gameId
-    }));
-
-  try {
-    const result = await notificationService.sendBatch(notifications);
-    logger.info('New game notifications sent', {
-      gameId,
-      total: notifications.length,
-      successful: result.successful,
-      failed: result.failed
-    });
-  } catch (error) {
-    logger.error('Failed to send new game notifications', { gameId, error: error instanceof Error ? error.message : 'Unknown error' });
-  }
-}
-
 async function handleSendPaymentReminders(event: TypedDomainEvent) {
   console.log('handleSendPaymentReminders')
   if (event.type !== 'SendPaymentReminders') return;
@@ -472,4 +420,289 @@ async function handlePaymentAttemptRejectedEarly(event: TypedDomainEvent) {
   if (event.type !== 'PaymentAttemptRejectedEarly') return;
   // Обработчик для ранней попытки оплаты - пока пустой, можно добавить логику позже
   logger.info('Processing PaymentAttemptRejectedEarly', { gameId: event.payload.gameId, userId: event.payload.userId });
+}
+
+async function handlePlayerSelectedOrganizers(event: TypedDomainEvent) {
+  if (event.type !== 'PlayerSelectedOrganizers') return;
+  const { playerId, organizerIds } = event.payload;
+  logger.info('Processing PlayerSelectedOrganizers', { playerId, organizerIds });
+
+  // Найти организаторов и уведомить их
+  const organizers = await prisma.organizer.findMany({
+    where: { id: { in: organizerIds } },
+    include: { user: true }
+  });
+
+  const player = await prisma.user.findUnique({ where: { id: playerId } });
+  if (!player) {
+    logger.warn('Player not found for organizer notification', { playerId });
+    return;
+  }
+
+  const message = `👤 Новый запрос на связь!\nИгрок ${player.name} хочет присоединиться к вашим играм.`;
+
+  const notifications = organizers
+    .filter(org => org.user?.telegramId)
+    .map(org => ({
+      userId: org.userId,
+      chatId: org.user!.telegramId!,
+      message,
+      type: 'player-selected-organizer',
+      gameId: undefined,
+      buttons: [
+        [
+          { text: '✅ Принять', callback_data: `confirm_player_${playerId}` },
+          { text: '❌ Отказать', callback_data: `reject_player_${playerId}` }
+        ]
+      ]
+    }));
+
+  try {
+    const result = await notificationService.sendBatch(notifications);
+    logger.info('Player selected organizers notifications sent', {
+      playerId,
+      organizerIds,
+      successful: result.successful,
+      failed: result.failed
+    });
+  } catch (error) {
+    logger.error('Failed to send player selected organizers notifications', { playerId, organizerIds, error: error instanceof Error ? error.message : 'Unknown error' });
+  }
+}
+
+async function handlePlayerConfirmedByOrganizer(event: TypedDomainEvent) {
+  if (event.type !== 'PlayerConfirmedByOrganizer') return;
+  const { organizerId, playerId, playerName } = event.payload;
+  logger.info('Processing PlayerConfirmedByOrganizer', { organizerId, playerId, playerName });
+
+  // Найти игрока и уведомить
+  const player = await prisma.user.findUnique({ where: { id: playerId } });
+  if (!player?.telegramId) {
+    logger.warn('Player not found or no telegram ID for confirmation notification', { playerId });
+    return;
+  }
+
+  const organizer = await prisma.organizer.findUnique({
+    where: { id: organizerId },
+    include: { user: true }
+  });
+
+  const message = `✅ Поздравляем!\nОрганизатор ${organizer?.title || organizer?.user?.name || 'Unknown'} подтвердил вашу связь.\nТеперь вы будете получать приоритетные приглашения на игры!`;
+
+  try {
+    await notificationService.sendNotification({
+      userId: playerId,
+      chatId: player.telegramId,
+      message,
+      type: 'player-confirmed',
+      gameId: undefined
+    });
+    logger.info('Player confirmation notification sent', { playerId, organizerId });
+  } catch (error) {
+    logger.error('Failed to send player confirmation notification', { playerId, organizerId, error: error instanceof Error ? error.message : 'Unknown error' });
+  }
+}
+
+async function handlePlayerRejectedByOrganizer(event: TypedDomainEvent) {
+  if (event.type !== 'PlayerRejectedByOrganizer') return;
+  const { organizerId, playerId, playerName } = event.payload;
+  logger.info('Processing PlayerRejectedByOrganizer', { organizerId, playerId, playerName });
+
+  // Найти игрока и уведомить
+  const player = await prisma.user.findUnique({ where: { id: playerId } });
+  if (!player?.telegramId) {
+    logger.warn('Player not found or no telegram ID for rejection notification', { playerId });
+    return;
+  }
+
+  const organizer = await prisma.organizer.findUnique({
+    where: { id: organizerId },
+    include: { user: true }
+  });
+
+  const message = `❌ Связь отклонена\nОрганизатор ${organizer?.title || organizer?.user?.name || 'Unknown'} отклонил ваш запрос на связь.`;
+
+  try {
+    await notificationService.sendNotification({
+      userId: playerId,
+      chatId: player.telegramId,
+      message,
+      type: 'player-rejected',
+      gameId: undefined
+    });
+    logger.info('Player rejection notification sent', { playerId, organizerId });
+  } catch (error) {
+    logger.error('Failed to send player rejection notification', { playerId, organizerId, error: error instanceof Error ? error.message : 'Unknown error' });
+  }
+}
+
+async function handleGameCreatedWithPriorityWindow(event: TypedDomainEvent) {
+  if (event.type !== 'GameCreatedWithPriorityWindow') return;
+  const { gameId, priorityWindowClosesAt, confirmedPlayers } = event.payload;
+  logger.info('Processing GameCreatedWithPriorityWindow', { gameId, priorityWindowClosesAt, confirmedPlayersCount: confirmedPlayers.length });
+
+  // Найти игру для получения деталей
+  const game = await prisma.game.findUnique({
+    where: { id: gameId },
+    include: { organizer: { include: { user: true } } }
+  });
+
+  if (!game) {
+    logger.warn('Game not found for priority window notifications', { gameId });
+    return;
+  }
+
+  const gameTime = formatGameTimeForNotification(game.startsAt);
+  const message = `🎾 Приоритетное приглашение!\n${gameTime}\n🏟️ ${game.levelTag || 'Общий уровень'}\n💰 ${game.priceText || 'По согласованию'}\n${getOrganizerName(game)}\n\n⏰ У вас есть 2 часа на ответ!`;
+
+  const notifications = confirmedPlayers
+    .filter(player => player.telegramId)
+    .map(player => ({
+      userId: player.playerId,
+      chatId: player.telegramId,
+      message,
+      type: 'priority-game-invitation',
+      gameId,
+      buttons: [
+        [
+          { text: '✅ Да', callback_data: `respond_game_${gameId}_yes` },
+          { text: '❌ Нет', callback_data: `respond_game_${gameId}_no` }
+        ]
+      ]
+    }));
+
+  try {
+    const result = await notificationService.sendBatch(notifications);
+    logger.info('Priority game invitations sent', {
+      gameId,
+      total: notifications.length,
+      successful: result.successful,
+      failed: result.failed
+    });
+  } catch (error) {
+    logger.error('Failed to send priority game invitations', { gameId, error: error instanceof Error ? error.message : 'Unknown error' });
+  }
+}
+
+async function handlePlayerRespondedToGameInvitation(event: TypedDomainEvent) {
+  if (event.type !== 'PlayerRespondedToGameInvitation') return;
+  const { gameId, playerId, response } = event.payload;
+  logger.info('Processing PlayerRespondedToGameInvitation', { gameId, playerId, response });
+
+  // Найти организатора игры и уведомить о ответе
+  const game = await prisma.game.findUnique({
+    where: { id: gameId },
+    include: { organizer: { include: { user: true } } }
+  });
+
+  if (!game?.organizer?.user?.telegramId) {
+    logger.warn('Organizer not found for response notification', { gameId, playerId });
+    return;
+  }
+
+  const player = await prisma.user.findUnique({ where: { id: playerId } });
+  const responseText = response === 'yes' ? '✅ Да' : response === 'no' ? '❌ Нет' : '⏳ Игнорирует';
+
+  // Если игрок ответил "yes", добавить его в игру
+  if (response === 'yes') {
+    try {
+      const { joinGame } = await import('../application/use-cases.js');
+      await joinGame(gameId, playerId);
+      logger.info('Player automatically joined game after yes response', { gameId, playerId });
+    } catch (error) {
+      logger.error('Failed to add player to game after yes response', { gameId, playerId, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  }
+
+  const message = `📝 Ответ на приглашение\nИгрок ${player?.name || 'Unknown'}: ${responseText}\nИгра: ${gameId}`;
+
+  try {
+    await notificationService.sendNotification({
+      userId: game.organizer.userId,
+      chatId: game.organizer.user.telegramId,
+      message,
+      type: 'player-response',
+      gameId
+    });
+    logger.info('Player response notification sent to organizer', { gameId, playerId, response });
+  } catch (error) {
+    logger.error('Failed to send player response notification', { gameId, playerId, error: error instanceof Error ? error.message : 'Unknown error' });
+  }
+}
+
+async function handleGamePublishedForAll(event: TypedDomainEvent) {
+  if (event.type !== 'GamePublishedForAll') return;
+  const { gameId } = event.payload;
+  logger.info('Processing GamePublishedForAll', { gameId });
+
+  // Найти игру и отправить уведомления всем подходящим игрокам
+  const game = await prisma.game.findUnique({
+    where: { id: gameId },
+    include: { organizer: { include: { user: true } } }
+  });
+
+  if (!game) {
+    logger.warn('Game not found for publish notifications', { gameId });
+    return;
+  }
+
+  // Обновить флаг publishedForAll
+  await prisma.game.update({
+    where: { id: gameId },
+    data: { publishedForAll: true }
+  });
+
+  // Получить всех приоритетных игроков организатора (они уже получили приглашение)
+  const priorityPlayers = await (prisma as any).playerOrganizer.findMany({
+    where: {
+      organizerId: game.organizerId,
+      status: 'confirmed'
+    },
+    select: { playerId: true }
+  });
+
+  const priorityPlayerIds = new Set(priorityPlayers.map((p: any) => p.playerId));
+
+  // Найти подходящих игроков: активные пользователи, которые не являются организатором и не приоритетными
+  const suitableUsers = await prisma.user.findMany({
+    where: {
+      id: { not: game.organizer.userId } // Исключаем организатора
+    },
+    include: {
+      notificationPreferences: true
+    }
+  });
+
+  const filteredUsers = suitableUsers.filter(user =>
+    user.telegramId !== null && !priorityPlayerIds.has(user.id)
+  );
+
+  const gameTime = formatGameTimeForNotification(game.startsAt);
+  const message = `🎾 Новая игра доступна!\n${gameTime}\n🏟️ ${game.levelTag || 'Общий уровень'}\n💰 ${game.priceText || 'По согласованию с организатором'}\n${getOrganizerName(game)}\nПрисоединиться: /join ${gameId}`;
+
+  const notifications = filteredUsers
+    .filter(user => {
+      // Проверяем настройки уведомлений
+      const prefs = (user as any).notificationPreferences;
+      return prefs?.globalNotifications !== false;
+    })
+    .map(user => ({
+      userId: user.id,
+      chatId: user.telegramId!,
+      message,
+      type: 'game-published-for-all',
+      gameId
+    }));
+
+  try {
+    const result = await notificationService.sendBatch(notifications);
+    logger.info('Game published for all notifications sent', {
+      gameId,
+      total: notifications.length,
+      successful: result.successful,
+      failed: result.failed
+    });
+  } catch (error) {
+    logger.error('Failed to send game published for all notifications', { gameId, error: error instanceof Error ? error.message : 'Unknown error' });
+  }
 }

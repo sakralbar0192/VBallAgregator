@@ -8,6 +8,10 @@ export class ErrorHandler {
     [ERROR_CODES.NOT_FOUND]: 'Игра не найдена',
     [ERROR_CODES.PAYMENT_WINDOW_NOT_OPEN]: 'Окно оплаты еще не открыто',
     [ERROR_CODES.NOT_CONFIRMED]: 'Только подтвержденные участники могут отмечать оплату',
+    [ERROR_CODES.PRIORITY_WINDOW_ACTIVE]: 'Игра доступна только для подтвержденных игроков организатора в приоритетное окно',
+    [ERROR_CODES.FORBIDDEN]: 'Доступ запрещен',
+    [ERROR_CODES.INVALID_STATE]: 'Недопустимое состояние',
+    [ERROR_CODES.INVALID_INPUT]: 'Некорректный ввод',
   };
 
   static mapToUserMessage(error: Error): string {

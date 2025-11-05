@@ -33,6 +33,7 @@ export class Game {
   // Бизнес-правило: проверка возможности записи на игру
   ensureCanJoin(confirmedCount: number) {
     if (this.status !== GameStatus.open) throw new DomainError(ERROR_CODES.GAME_NOT_OPEN, 'Игра не открыта для записи');
+    // NOTE: Время игры хранится в UTC, сравниваем с текущим временем в UTC
     if (this.startsAt <= new Date()) throw new DomainError(ERROR_CODES.GAME_ALREADY_STARTED, 'Игра уже началась');
     if (confirmedCount >= this.capacity) throw new DomainError(ERROR_CODES.CAPACITY_REACHED, 'Достигнута максимальная вместимость');
   }

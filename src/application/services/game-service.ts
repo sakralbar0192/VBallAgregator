@@ -145,6 +145,12 @@ export class GameApplicationService {
       throw new DomainError('NOT_FOUND', 'Организатор не найден');
     }
 
+    // Check if venue is available at the specified time
+    const conflictingGame = await this.gameRepo.findConflictingGame(command.venueId, command.startsAt);
+    if (conflictingGame) {
+      throw new DomainError('VENUE_OCCUPIED', `Площадка занята в это время. Конфликтующая игра: ${conflictingGame.id}`);
+    }
+
     const g = new Game(
       uuid(),
       organizer.id,
@@ -159,18 +165,63 @@ export class GameApplicationService {
     logger.info('Game created', { gameId: g.id });
     metrics.gamesCreated.increment();
 
-    await this.eventBus.publish({
-      type: 'GameCreated',
-      occurredAt: new Date(),
-      id: '',
-      payload: {
-        gameId: g.id,
-        startsAt: g.startsAt.toISOString(),
-        capacity: g.capacity,
-        levelTag: g.levelTag,
-        priceText: g.priceText
-      }
+    // Установить время закрытия приоритетного окна (2 часа до начала игры)
+    const priorityWindowClosesAt = new Date(g.startsAt.getTime() - 2 * 60 * 60 * 1000);
+    await this.gameRepo.updatePriorityWindow(g.id, priorityWindowClosesAt);
+
+    // Получить всех подтвержденных игроков организатора
+    const { prisma } = await import('../../infrastructure/prisma.js');
+    const confirmedPlayers = await (prisma as any).playerOrganizer.findMany({
+      where: {
+        organizerId: organizer.id,
+        status: 'confirmed'
+      },
+      include: { player: true }
     });
+
+    // Создать записи GamePlayerResponse со статусом 'ignored' (ожидание ответа)
+    const responses = confirmedPlayers.map((po: any) => ({
+      gameId: g.id,
+      playerId: po.player.id,
+      response: 'ignored' as const
+    }));
+
+    if (responses.length > 0) {
+      await (prisma as any).gamePlayerResponse.createMany({
+        data: responses,
+        skipDuplicates: true
+      });
+    }
+
+    // Запланировать проверку истечения приоритетного окна через 2 часа
+    await this.schedulerService.schedulePriorityWindowCheck(g.id, priorityWindowClosesAt);
+
+    // Опубликовать событие о создании игры с приоритетным окном
+    // Если есть приоритетные игроки - отправляем им приглашение
+    // Если нет - сразу открываем для всех
+    if (confirmedPlayers.length > 0) {
+      await this.eventBus.publish({
+        type: 'GameCreatedWithPriorityWindow',
+        occurredAt: new Date(),
+        id: '',
+        payload: {
+          gameId: g.id,
+          priorityWindowClosesAt: priorityWindowClosesAt.toISOString(),
+          confirmedPlayers: confirmedPlayers.map((po: any) => ({
+            playerId: po.player.id,
+            telegramId: po.player.telegramId
+          }))
+        }
+      });
+    } else {
+      // Нет приоритетных игроков - сразу открываем для всех
+      await this.eventBus.publish({
+        type: 'GamePublishedForAll',
+        occurredAt: new Date(),
+        id: '',
+        payload: { gameId: g.id }
+      });
+    }
 
     // Schedule reminders
     await this.schedulerService.scheduleGameReminder24h(g.id, g.startsAt);

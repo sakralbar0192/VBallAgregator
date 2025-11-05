@@ -42,6 +42,45 @@
 
     logger.info('joinGame called', { gameId, userId });
 
+    // Проверить, находится ли игра в приоритетном окне
+    const game = await prisma.game.findUnique({
+      where: { id: gameId },
+      select: { status: true, organizerId: true, startsAt: true, createdAt: true }
+    });
+
+    if (!game) {
+      throw new DomainError('NOT_FOUND', 'Игра не найдена');
+    }
+
+    // Проверить, что игра еще не началась
+    // NOTE: Время игры хранится в UTC, сравниваем с текущим временем в UTC
+    if (game.startsAt <= new Date()) {
+      throw new DomainError('GAME_ALREADY_STARTED', 'Игра уже началась');
+    }
+
+    // Если игра создана недавно (в течение последних 2 часов), проверить, является ли пользователь подтвержденным игроком организатора
+    // Но только если пользователь не является организатором игры
+    const gameAge = Date.now() - game.createdAt.getTime();
+    const isInPriorityWindow = game.status === 'open' && gameAge < 2 * 60 * 60 * 1000;
+
+    if (isInPriorityWindow) {
+      // Проверить, является ли пользователь организатором игры
+      const isOrganizer = game.organizerId === userId;
+      if (!isOrganizer) {
+        const isConfirmedPlayer = await (prisma as any).playerOrganizer.findFirst({
+          where: {
+            playerId: userId,
+            organizerId: game.organizerId,
+            status: 'confirmed'
+          }
+        });
+
+        if (!isConfirmedPlayer) {
+          throw new DomainError('PRIORITY_WINDOW_ACTIVE', 'Игра доступна только для подтвержденных игроков организатора в приоритетное окно');
+        }
+      }
+    }
+
     // Use new Application Service
     return await gameApplicationService.joinGame({ gameId, userId });
   }
@@ -298,15 +337,48 @@
 
   /**
    * Получает список игр.
+   * @param {string} [userId] - ID пользователя (опционально, для фильтрации по приоритетному окну).
    * @returns {Promise<Game[]>} - Список игр.
    */
-  export async function listGames() {
+  export async function listGames(userId?: string) {
     const games = await prisma.game.findMany({
       where: { status: 'open' },
       orderBy: { startsAt: 'asc' }
     });
 
-    return games.map((g: any) => new Game(
+    // Если передан userId, фильтруем игры по приоритетному окну
+    let filteredGames = games;
+    if (userId) {
+      filteredGames = [];
+      for (const game of games) {
+        const gameAge = Date.now() - game.createdAt.getTime();
+        const isInPriorityWindow = game.status === 'open' && gameAge < 2 * 60 * 60 * 1000 && !game.publishedForAll;
+
+        if (!isInPriorityWindow) {
+          // Игра не в приоритетном окне или опубликована для всех - показываем всем
+          filteredGames.push(game);
+        } else {
+          // Игра в приоритетном окне - проверяем, является ли пользователь подтвержденным игроком или организатором
+          const isOrganizer = game.organizerId === userId;
+          if (isOrganizer) {
+            filteredGames.push(game);
+          } else {
+            const isConfirmedPlayer = await (prisma as any).playerOrganizer.findFirst({
+              where: {
+                playerId: userId,
+                organizerId: game.organizerId,
+                status: 'confirmed'
+              }
+            });
+            if (isConfirmedPlayer) {
+              filteredGames.push(game);
+            }
+          }
+        }
+      }
+    }
+
+    return filteredGames.map((g: any) => new Game(
       g.id,
       g.organizerId,
       g.venueId,
@@ -364,6 +436,434 @@
     await gameApplicationService.finishGame(gameId);
 
     logger.info('Game finished and payment reminders scheduled', { gameId });
+  }
+
+  /**
+   * Позволяет игроку выбрать организаторов.
+   * @param {string} playerId - ID игрока.
+   * @param {string[]} organizerIds - Массив ID организаторов.
+   * @returns {Promise<{ ok: boolean }>} - Успех операции.
+   */
+  export async function selectOrganizers(playerId: string, organizerIds: string[]) {
+    if (!playerId?.trim()) {
+      throw new DomainError('INVALID_INPUT', 'playerId не может быть пустым');
+    }
+    if (!organizerIds?.length) {
+      throw new DomainError('INVALID_INPUT', 'organizerIds не может быть пустым');
+    }
+
+    logger.info('selectOrganizers called', { playerId, organizerIds });
+
+    // Проверить существование игрока
+    const player = await prisma.user.findUnique({ where: { id: playerId } });
+    if (!player) throw new DomainError('NOT_FOUND', 'Игрок не найден');
+
+    // Проверить существование организаторов
+    const organizers = await prisma.organizer.findMany({
+      where: { id: { in: organizerIds } }
+    });
+    if (organizers.length !== organizerIds.length) {
+      throw new DomainError('NOT_FOUND', 'Один или несколько организаторов не найдены');
+    }
+
+    // Создать связи со статусом pending
+    const playerOrganizers = organizerIds.map(organizerId => ({
+      playerId,
+      organizerId,
+      status: 'pending' as const,
+    }));
+
+    await (prisma as any).playerOrganizer.createMany({
+      data: playerOrganizers,
+      skipDuplicates: true, // Игнорировать дубликаты
+    });
+
+    logger.info('Organizers selected', { playerId, organizerIds });
+    await eventBus.publish({
+      type: 'PlayerSelectedOrganizers',
+      occurredAt: new Date(),
+      id: '',
+      payload: { playerId, organizerIds }
+    });
+
+    return { ok: true };
+  }
+
+  /**
+   * Позволяет организатору подтвердить игрока.
+   * @param {string} organizerId - ID организатора.
+   * @param {string} playerId - ID игрока.
+   * @returns {Promise<{ ok: boolean }>} - Успех операции.
+   */
+  export async function confirmPlayer(organizerId: string, playerId: string) {
+    if (!organizerId?.trim()) {
+      throw new DomainError('INVALID_INPUT', 'organizerId не может быть пустым');
+    }
+    if (!playerId?.trim()) {
+      throw new DomainError('INVALID_INPUT', 'playerId не может быть пустым');
+    }
+
+    logger.info('confirmPlayer called', { organizerId, playerId });
+
+    // Проверить существование связи со статусом pending
+    const playerOrganizer = await (prisma as any).playerOrganizer.findUnique({
+      where: { playerId_organizerId: { playerId, organizerId } }
+    });
+    if (!playerOrganizer) {
+      throw new DomainError('NOT_FOUND', 'Связь между игроком и организатором не найдена');
+    }
+    if (playerOrganizer.status !== 'pending') {
+      throw new DomainError('INVALID_STATE', 'Игрок уже подтвержден или отклонен');
+    }
+
+    // Обновить статус на confirmed
+    await (prisma as any).playerOrganizer.update({
+      where: { playerId_organizerId: { playerId, organizerId } },
+      data: { status: 'confirmed', confirmedAt: new Date() }
+    });
+
+    // Получить имя игрока для события
+    const player = await prisma.user.findUnique({
+      where: { id: playerId },
+      select: { name: true }
+    });
+
+    logger.info('Player confirmed', { organizerId, playerId });
+    await eventBus.publish({
+      type: 'PlayerConfirmedByOrganizer',
+      occurredAt: new Date(),
+      id: '',
+      payload: { organizerId, playerId, playerName: player?.name || 'Unknown' }
+    });
+
+    return { ok: true };
+  }
+
+  /**
+   * Позволяет организатору отклонить игрока.
+   * @param {string} organizerId - ID организатора.
+   * @param {string} playerId - ID игрока.
+   * @returns {Promise<{ ok: boolean }>} - Успех операции.
+   */
+  export async function rejectPlayer(organizerId: string, playerId: string) {
+    if (!organizerId?.trim()) {
+      throw new DomainError('INVALID_INPUT', 'organizerId не может быть пустым');
+    }
+    if (!playerId?.trim()) {
+      throw new DomainError('INVALID_INPUT', 'playerId не может быть пустым');
+    }
+
+    logger.info('rejectPlayer called', { organizerId, playerId });
+
+    // Обновить статус на rejected
+    const result = await (prisma as any).playerOrganizer.updateMany({
+      where: {
+        playerId,
+        organizerId,
+        status: 'pending'
+      },
+      data: { status: 'rejected' }
+    });
+
+    if (result.count === 0) {
+      throw new DomainError('NOT_FOUND', 'Связь между игроком и организатором не найдена или уже обработана');
+    }
+
+    // Получить имя игрока для события
+    const player = await prisma.user.findUnique({
+      where: { id: playerId },
+      select: { name: true }
+    });
+
+    logger.info('Player rejected', { organizerId, playerId });
+    await eventBus.publish({
+      type: 'PlayerRejectedByOrganizer',
+      occurredAt: new Date(),
+      id: '',
+      payload: { organizerId, playerId, playerName: player?.name || 'Unknown' }
+    });
+
+    return { ok: true };
+  }
+
+  /**
+   * Получает список игроков организатора.
+   * @param {string} organizerId - ID организатора.
+   * @param {string} [status] - Фильтр по статусу (опционально).
+   * @returns {Promise<Array>} - Список игроков.
+   */
+  export async function getOrganizerPlayers(organizerId: string, status?: string) {
+    if (!organizerId?.trim()) {
+      throw new DomainError('INVALID_INPUT', 'organizerId не может быть пустым');
+    }
+
+    logger.info('getOrganizerPlayers called', { organizerId, status });
+
+    const where: any = { organizerId };
+    if (status) {
+      where.status = status;
+    }
+
+    const playerOrganizers = await (prisma as any).playerOrganizer.findMany({
+      where,
+      include: {
+        player: {
+          select: { id: true, name: true, levelTag: true }
+        }
+      },
+      orderBy: { requestedAt: 'desc' }
+    });
+
+    return playerOrganizers.map((po: any) => ({
+      playerId: po.player.id,
+      playerName: po.player.name,
+      levelTag: po.player.levelTag,
+      status: po.status,
+      requestedAt: po.requestedAt,
+      confirmedAt: po.confirmedAt
+    }));
+  }
+
+   /**
+    * Проверяет, все ли приоритетные игроки ответили на приглашение.
+    * Если все ответили — публикует GamePublishedForAll.
+    * @param {string} gameId - ID игры.
+    */
+   async function checkIfAllPriorityPlayersResponded(gameId: string): Promise<void> {
+     const game = await prisma.game.findUnique({
+       where: { id: gameId },
+       select: { organizerId: true }
+     });
+
+     if (!game) {
+       logger.warn('Game not found for priority check', { gameId });
+       return;
+     }
+
+     // Получить всех подтвержденных игроков организатора
+     const confirmedPlayers = await (prisma as any).playerOrganizer.findMany({
+       where: {
+         organizerId: game.organizerId,
+         status: 'confirmed'
+       },
+       select: { playerId: true }
+     });
+
+     if (confirmedPlayers.length === 0) {
+       // Нет приоритетных игроков — сразу открываем для всех
+       logger.info('No priority players for game, publishing for all', { gameId });
+       await eventBus.publish({
+         type: 'GamePublishedForAll',
+         occurredAt: new Date(),
+         id: '',
+         payload: { gameId }
+       });
+       return;
+     }
+
+     // Получить ответы всех приоритетных игроков
+     const responses = await (prisma as any).gamePlayerResponse.findMany({
+       where: {
+         gameId,
+         playerId: { in: confirmedPlayers.map((p: any) => p.playerId) }
+       },
+       select: { response: true }
+     });
+
+     // Проверить, все ли ответили (не 'ignored')
+     const allResponded = responses.length === confirmedPlayers.length &&
+       responses.every((r: any) => r.response !== 'ignored');
+
+     if (allResponded) {
+       logger.info('All priority players responded, publishing game for all', { gameId, playerCount: confirmedPlayers.length });
+       await eventBus.publish({
+         type: 'GamePublishedForAll',
+         occurredAt: new Date(),
+         id: '',
+         payload: { gameId }
+       });
+     } else {
+       logger.info('Not all priority players responded yet', {
+         gameId,
+         responded: responses.length,
+         total: confirmedPlayers.length
+       });
+     }
+   }
+
+  /**
+   * Позволяет игроку ответить на приглашение к игре.
+   * @param {string} gameId - ID игры.
+   * @param {string} playerId - ID игрока.
+   * @param {string} response - Ответ ('yes', 'no', 'ignored').
+   * @returns {Promise<{ ok: boolean }>} - Успех операции.
+   */
+  export async function respondToGameInvitation(gameId: string, playerId: string, response: string) {
+    if (!gameId?.trim()) {
+      throw new DomainError('INVALID_INPUT', 'gameId не может быть пустым');
+    }
+    if (!playerId?.trim()) {
+      throw new DomainError('INVALID_INPUT', 'playerId не может быть пустым');
+    }
+    if (!['yes', 'no', 'ignored'].includes(response)) {
+      throw new DomainError('INVALID_INPUT', 'response должен быть "yes", "no" или "ignored"');
+    }
+
+    logger.info('respondToGameInvitation called', { gameId, playerId, response });
+
+    // Проверить, что игрок — подтвержденный игрок организатора игры
+    const game = await prisma.game.findUnique({
+      where: { id: gameId },
+      select: { organizerId: true, createdAt: true }
+    });
+    if (!game) {
+      throw new DomainError('NOT_FOUND', 'Игра не найдена');
+    }
+
+    const isConfirmedPlayer = await (prisma as any).playerOrganizer.findFirst({
+      where: {
+        playerId,
+        organizerId: game.organizerId,
+        status: 'confirmed'
+      }
+    });
+
+    if (!isConfirmedPlayer) {
+      throw new DomainError('FORBIDDEN', 'Только подтвержденные игроки организатора могут отвечать на приглашения');
+    }
+
+    // Обновить или создать запись GamePlayerResponse
+    await (prisma as any).gamePlayerResponse.upsert({
+      where: {
+        gameId_playerId: { gameId, playerId }
+      },
+      update: {
+        response: response as any,
+        respondedAt: response !== 'ignored' ? new Date() : null
+      },
+      create: {
+        gameId,
+        playerId,
+        response: response as any,
+        respondedAt: response !== 'ignored' ? new Date() : null
+      }
+    });
+
+    logger.info('Player responded to game invitation', { gameId, playerId, response });
+    await eventBus.publish({
+      type: 'PlayerRespondedToGameInvitation',
+      occurredAt: new Date(),
+      id: '',
+      payload: { gameId, playerId, response }
+    });
+
+    // Проверить, все ли приоритетные игроки ответили
+    await checkIfAllPriorityPlayersResponded(gameId);
+
+    return { ok: true };
+  }
+
+  /**
+   * Уведомляет подтвержденных игроков о новой игре.
+   * @param {string} gameId - ID игры.
+   * @returns {Promise<void>} - Успех операции.
+   */
+  export async function notifyConfirmedPlayersAboutGame(gameId: string) {
+    if (!gameId?.trim()) {
+      throw new DomainError('INVALID_INPUT', 'gameId не может быть пустым');
+    }
+
+    logger.info('notifyConfirmedPlayersAboutGame called', { gameId });
+
+    // Найти игру и организатора
+    const game = await prisma.game.findUnique({
+      where: { id: gameId },
+      include: { organizer: true }
+    });
+    if (!game) {
+      throw new DomainError('NOT_FOUND', 'Игра не найдена');
+    }
+
+    // Найти всех подтвержденных игроков организатора
+    const confirmedPlayers = await (prisma as any).playerOrganizer.findMany({
+      where: {
+        organizerId: game.organizer.id,
+        status: 'confirmed'
+      },
+      include: {
+        player: true
+      }
+    });
+
+    // Создать записи GamePlayerResponse со статусом 'ignored' (ожидание ответа)
+    const responses = confirmedPlayers.map((po: any) => ({
+      gameId,
+      playerId: po.player.id,
+      response: 'ignored' as const
+    }));
+
+    await (prisma as any).gamePlayerResponse.createMany({
+      data: responses,
+      skipDuplicates: true
+    });
+
+    // Опубликовать событие для уведомления игроков
+    const priorityWindowClosesAt = new Date(game.createdAt.getTime() + 2 * 60 * 60 * 1000);
+    await eventBus.publish({
+      type: 'GameCreatedWithPriorityWindow',
+      occurredAt: new Date(),
+      id: '',
+      payload: {
+        gameId,
+        priorityWindowClosesAt: priorityWindowClosesAt.toISOString(),
+        confirmedPlayers: confirmedPlayers.map((po: any) => ({
+          playerId: po.player.id,
+          telegramId: po.player.telegramId
+        }))
+      }
+    });
+
+    logger.info('Confirmed players notified about game', { gameId, playerCount: confirmedPlayers.length });
+  }
+
+  /**
+   * Проверяет истечение приоритетного окна и публикует игру для всех.
+   * Вызывается по таймеру через 2 часа после создания игры.
+   * @param {string} gameId - ID игры.
+   * @returns {Promise<void>} - Успех операции.
+   */
+  export async function checkPriorityWindowExpiration(gameId: string) {
+    if (!gameId?.trim()) {
+      throw new DomainError('INVALID_INPUT', 'gameId не может быть пустым');
+    }
+
+    logger.info('checkPriorityWindowExpiration called', { gameId });
+
+    const game = await prisma.game.findUnique({
+      where: { id: gameId },
+      select: { status: true, createdAt: true }
+    });
+
+    if (!game || game.status !== 'open') {
+      logger.info('Game not found or not open', { gameId });
+      return;
+    }
+
+    // Проверить, истекло ли приоритетное окно (2 часа после создания)
+    const priorityWindowClosesAt = new Date(game.createdAt.getTime() + 2 * 60 * 60 * 1000);
+    if (priorityWindowClosesAt > new Date()) {
+      logger.info('Priority window not expired yet', { gameId, closesAt: priorityWindowClosesAt });
+      return;
+    }
+
+    // Приоритетное окно истекло — публикуем игру для всех
+    logger.info('Priority window expired, publishing game for all players', { gameId });
+    await eventBus.publish({
+      type: 'GamePublishedForAll',
+      occurredAt: new Date(),
+      id: '',
+      payload: { gameId }
+    });
   }
 
   /**

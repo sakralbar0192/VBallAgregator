@@ -1,35 +1,50 @@
 import { Context } from 'telegraf';
 import { createGame } from '../application/use-cases.js';
 import { prisma } from '../infrastructure/prisma.js';
-import { formatGameTimeForNotification } from '../shared/date-utils.js';
+import { formatGameTimeForNotification, getUserTimezone, getMinGameStartTime, isTodayInTimezone, getCurrentTimeInTimezone } from '../shared/date-utils.js';
 
 export class GameCreationWizard {
   private static sessions = new Map<number, Partial<GameCreationSession>>();
 
+  /**
+   * Инициирует процесс создания игры
+   * 1. Проверяет, что пользователь зарегистрирован и является организатором
+   * 2. Определяет, доступна ли опция "Сегодня" (если минимальное время начала <= 21:00)
+   * 3. Показывает кнопки выбора даты
+   */
   static async start(ctx: Context): Promise<void> {
     const telegramId = ctx.from!.id;
 
+    // Получаем пользователя по Telegram ID
     const user = await prisma.user.findUnique({ where: { telegramId } });
     if (!user) {
       await ctx.reply('Сначала зарегистрируйся командой /start');
       return;
     }
 
+    // Проверяем, что пользователь зарегистрирован как организатор
     const organizer = await prisma.organizer.findUnique({ where: { userId: user.id } });
     if (!organizer) {
       await ctx.reply('Ты не зарегистрирован как организатор. Выбери роль организатора в /start');
       return;
     }
 
-    // Начинаем сессию
+    // Инициализируем сессию создания игры
     this.sessions.set(telegramId, { userId: user.id });
 
-    // Проверяем, можно ли создать игру сегодня (не менее чем за 4 часа)
-    const now = new Date();
-    const minStartTime = new Date(now.getTime() + 4 * 60 * 60 * 1000);
+    // Определяем, можно ли создать игру сегодня
+    // Правило: игру можно создать только если минимальное время начала (текущее время + 4 часа) <= 21:00
+    // Это гарантирует, что есть хотя бы один доступный слот времени (21:00 - максимальное время)
+    const userTz = getUserTimezone(user.id);
+    const minStartTime = getMinGameStartTime(userTz);
     const todayMinHour = minStartTime.getHours();
-    const showToday = todayMinHour <= 21;
+    // showToday = true только если минимальное время начала в пределах дня (часы < 24)
+    // т.е. если текущее время + 4 часа не переходит на следующий день
+    const nowInUserTz = getCurrentTimeInTimezone(userTz);
+    const isSameDay = minStartTime.toDateString() === nowInUserTz.toDateString();
+    const showToday = isSameDay && todayMinHour <= 21;
 
+    // Формируем кнопки выбора даты
     const dateButtons = [];
     if (showToday) {
       dateButtons.push([{ text: 'Сегодня', callback_data: 'wizard_date_today' }]);
@@ -39,6 +54,7 @@ export class GameCreationWizard {
       [{ text: 'Послезавтра', callback_data: 'wizard_date_day_after' }]
     );
 
+    // Отправляем сообщение с выбором даты
     await ctx.reply('🗓️ Выбери дату игры:', {
       reply_markup: {
         inline_keyboard: dateButtons
@@ -54,14 +70,14 @@ export class GameCreationWizard {
       return;
     }
 
-    // Вычисляем дату
-    const selectedDate = this.calculateDate(dateKey);
+    // Вычисляем дату в пользовательском TZ
+    const userTz = getUserTimezone(session.userId!);
+    const selectedDate = this.calculateDate(dateKey, userTz);
     session.date = selectedDate;
 
     // Шаг 2: выбор времени
-    const now = new Date();
-    const minStartTime = new Date(now.getTime() + 4 * 60 * 60 * 1000);
-    const isToday = selectedDate.toDateString() === now.toDateString();
+    const minStartTime = getMinGameStartTime(userTz);
+    const isToday = isTodayInTimezone(selectedDate, userTz);
 
     let startHour = 9;
     if (isToday) {
@@ -189,6 +205,17 @@ export class GameCreationWizard {
       return;
     }
 
+    // Валидация: проверяем, что время игры не в прошлом
+    const userTz = getUserTimezone(session.userId);
+    const nowInUserTz = getCurrentTimeInTimezone(userTz);
+    const gameTimeInUserTz = new Date(session.date.toLocaleString('en-US', { timeZone: userTz }));
+
+    if (gameTimeInUserTz <= nowInUserTz) {
+      await ctx.editMessageText('❌ Ошибка: время игры не может быть в прошлом. Начни заново с /newgame');
+      this.sessions.delete(telegramId);
+      return;
+    }
+
     // Map venue keys to IDs
     const venueMap: Record<string, string> = {
       chaika: 'venue-chaika-id',
@@ -230,20 +257,21 @@ export class GameCreationWizard {
     }
   }
 
-  private static calculateDate(dateKey: string): Date {
-    const baseDate = new Date();
+  private static calculateDate(dateKey: string, timezone: string = 'Asia/Irkutsk'): Date {
+    // Получаем текущую дату в пользовательском TZ
+    const nowInUserTz = getCurrentTimeInTimezone(timezone);
     let selectedDate: Date;
 
     switch (dateKey) {
       case 'today':
-        selectedDate = new Date(baseDate);
+        selectedDate = new Date(nowInUserTz);
         break;
       case 'tomorrow':
-        selectedDate = new Date(baseDate);
+        selectedDate = new Date(nowInUserTz);
         selectedDate.setDate(selectedDate.getDate() + 1);
         break;
       case 'day_after':
-        selectedDate = new Date(baseDate);
+        selectedDate = new Date(nowInUserTz);
         selectedDate.setDate(selectedDate.getDate() + 2);
         break;
       default:

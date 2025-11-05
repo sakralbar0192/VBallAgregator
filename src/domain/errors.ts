@@ -14,4 +14,8 @@ export const ERROR_CODES = {
   NOT_FOUND: 'NOT_FOUND', // Сущность не найдена
   PAYMENT_WINDOW_NOT_OPEN: 'PAYMENT_WINDOW_NOT_OPEN', // Окно оплаты еще не открыто
   NOT_CONFIRMED: 'NOT_CONFIRMED', // Только подтвержденные участники могут отмечать оплату
+  PRIORITY_WINDOW_ACTIVE: 'PRIORITY_WINDOW_ACTIVE', // Игра доступна только для подтвержденных игроков организатора в приоритетное окно
+  FORBIDDEN: 'FORBIDDEN', // Доступ запрещен
+  INVALID_STATE: 'INVALID_STATE', // Недопустимое состояние
+  INVALID_INPUT: 'INVALID_INPUT', // Некорректный ввод
 } as const;

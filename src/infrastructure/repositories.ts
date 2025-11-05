@@ -7,6 +7,8 @@ export interface GameRepo {
   countConfirmed(gameId: string): Promise<number>;
   insertGame(g: Game): Promise<void>;
   updateStatus(gameId: string, status: GameStatus): Promise<void>;
+  updatePriorityWindow(gameId: string, priorityWindowClosesAt: Date): Promise<void>;
+  findConflictingGame(venueId: string, startsAt: Date): Promise<Game | null>;
   transaction<T>(fn: () => Promise<T>): Promise<T>;
 }
 
@@ -24,16 +26,10 @@ export class PrismaGameRepo implements GameRepo {
    * @param fn - Функция, выполняемая в транзакции
    * @returns Результат выполнения функции
    */
-  /**
-   * Выполняет функцию в транзакции Prisma.
-   * Используется для обеспечения ACID-свойств при операциях с несколькими таблицами.
-   * @param fn - Функция, выполняемая в транзакции
-   * @returns Результат выполнения функции
-   */
   async transaction<T>(fn: () => Promise<T>): Promise<T> {
     return prisma.$transaction(fn);
   }
-  async findById(id: string): Promise<Game | null> {
+async findById(id: string): Promise<Game | null> {
     const game = await prisma.game.findUnique({ where: { id } });
     if (!game) return null;
     return new Game(
@@ -81,6 +77,47 @@ export class PrismaGameRepo implements GameRepo {
       where: { id: gameId },
       data: { status }
     });
+  }
+
+  async updatePriorityWindow(gameId: string, priorityWindowClosesAt: Date): Promise<void> {
+    // NOTE: priorityWindowClosesAt field may not exist in schema yet
+    // This method is implemented but field needs to be added to Prisma schema
+    await prisma.game.update({
+      where: { id: gameId },
+      data: { priorityWindowClosesAt } as any
+    });
+  }
+
+  async findConflictingGame(venueId: string, startsAt: Date): Promise<Game | null> {
+    // Check for games on the same venue at the same time (within 2 hours window)
+    const startWindow = new Date(startsAt.getTime() - 2 * 60 * 60 * 1000); // 2 hours before
+    const endWindow = new Date(startsAt.getTime() + 2 * 60 * 60 * 1000); // 2 hours after
+
+    const game = await prisma.game.findFirst({
+      where: {
+        venueId,
+        startsAt: {
+          gte: startWindow,
+          lte: endWindow
+        },
+        status: {
+          in: ['open', 'closed'] // Only check active games
+        }
+      }
+    });
+
+    if (!game) return null;
+
+    return new Game(
+      game.id,
+      game.organizerId,
+      game.venueId,
+      game.startsAt,
+      game.capacity,
+      game.levelTag || undefined,
+      game.priceText || undefined,
+      game.status as GameStatus
+    );
   }
 }
 

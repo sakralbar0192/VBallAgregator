@@ -25,6 +25,18 @@ enum PaymentStatus {
   paid
 }
 
+enum PlayerOrganizerStatus {
+  pending
+  confirmed
+  rejected
+}
+
+enum GamePlayerResponseType {
+  yes
+  no
+  ignored
+}
+
 model User {
    id          String   @id @default(uuid())
    telegramId  BigInt   @unique
@@ -36,6 +48,8 @@ model User {
    registrations Registration[]
    organizer     Organizer?
    notificationPreferences UserNotificationPreferences?
+   playerOrganizers PlayerOrganizer[] @relation("PlayerToOrganizers")
+   gamePlayerResponses GamePlayerResponse[]
 
    @@index([telegramId])
    @@map("users")
@@ -50,6 +64,7 @@ model Organizer {
   // Relations
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   games       Game[]
+  players     PlayerOrganizer[] @relation("OrganizerToPlayers")
 
   @@map("organizers")
 }
@@ -63,11 +78,14 @@ model Game {
   levelTag    String?
   priceText   String?
   status      GameStatus @default(open)
+  priorityWindowClosesAt DateTime?
+  publishedForAll Boolean @default(false)
   createdAt   DateTime   @default(now())
 
   // Relations
   organizer     Organizer     @relation(fields: [organizerId], references: [id])
   registrations Registration[]
+  gamePlayerResponses GamePlayerResponse[]
 
   @@index([organizerId])
   @@map("games")
@@ -108,4 +126,37 @@ model UserNotificationPreferences {
 
     @@index([globalNotifications])
     @@map("user_notification_preferences")
+}
+
+model PlayerOrganizer {
+  id            String   @id @default(uuid())
+  playerId      String
+  organizerId   String
+  status        PlayerOrganizerStatus   @default(pending)
+  requestedAt   DateTime @default(now())
+  confirmedAt   DateTime?
+
+  player        User     @relation("PlayerToOrganizers", fields: [playerId], references: [id], onDelete: Cascade)
+  organizer     Organizer @relation("OrganizerToPlayers", fields: [organizerId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, organizerId])
+  @@index([organizerId, status])
+  @@index([playerId, status])
+  @@map("player_organizers")
+}
+
+model GamePlayerResponse {
+  id            String   @id @default(uuid())
+  gameId        String
+  playerId      String
+  response      GamePlayerResponseType
+  respondedAt   DateTime?
+  createdAt     DateTime @default(now())
+
+  game          Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  player        User     @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([gameId, playerId])
+  @@index([gameId, response])
+  @@map("game_player_responses")
 }

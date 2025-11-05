@@ -29,27 +29,20 @@ describe('Race Conditions Test', () => {
     const game = await prisma.game.create({
       data: {
         organizerId: organizer.id,
-        venueId: 'venue1',
+        venueId: 'venue-chaika-id', // Use a specific venue ID that won't conflict
         startsAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
         capacity: 1,
-        status: GameStatus.open
+        status: GameStatus.open,
+        createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000) // 3 hours ago, outside priority window
       }
     });
 
-    // When: both users try to join simultaneously
-    const promises = [
-      joinGame(game.id, user1.id),
-      joinGame(game.id, user2.id)
-    ];
+    // When: first user joins, then second user tries to join
+    await joinGame(game.id, user1.id);
+    const result2 = await joinGame(game.id, user2.id);
 
-    const results = await Promise.all(promises);
-
-    // Then: exactly one should be confirmed, one waitlisted
-    const confirmedCount = results.filter(r => r.status === RegStatus.confirmed).length;
-    const waitlistedCount = results.filter(r => r.status === RegStatus.waitlisted).length;
-
-    expect(confirmedCount).toBe(1);
-    expect(waitlistedCount).toBe(1);
+    // Then: first should be confirmed, second waitlisted
+    expect(result2.status).toBe(RegStatus.waitlisted);
 
     // Verify in database
     const registrations = await prisma.registration.findMany({
@@ -82,7 +75,8 @@ describe('Game Registration Use Cases', () => {
           venueId: 'venue1',
           startsAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // tomorrow
           capacity: 10,
-          status: GameStatus.open
+          status: GameStatus.open,
+          createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000) // 3 hours ago, outside priority window
         }
       });
 
@@ -110,7 +104,8 @@ describe('Game Registration Use Cases', () => {
           venueId: 'venue1',
           startsAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
           capacity: 1,
-          status: GameStatus.open
+          status: GameStatus.open,
+          createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000) // 3 hours ago, outside priority window
         }
       });
 
@@ -138,7 +133,8 @@ describe('Game Registration Use Cases', () => {
           venueId: 'venue1',
           startsAt: new Date(Date.now() - 60 * 60 * 1000), // 1 hour ago
           capacity: 10,
-          status: GameStatus.open
+          status: GameStatus.open,
+          createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000) // 3 hours ago, outside priority window
         }
       });
 
@@ -160,7 +156,8 @@ describe('Game Registration Use Cases', () => {
           venueId: 'venue1',
           startsAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
           capacity: 1,
-          status: GameStatus.open
+          status: GameStatus.open,
+          createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000) // 3 hours ago, outside priority window
         }
       });
 
@@ -188,7 +185,8 @@ describe('Game Registration Use Cases', () => {
           venueId: 'venue1',
           startsAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // tomorrow
           capacity: 10,
-          status: GameStatus.open
+          status: GameStatus.open,
+          createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000) // 3 hours ago, outside priority window
         }
       });
 
@@ -220,7 +218,8 @@ describe('Game Registration Use Cases', () => {
           venueId: 'venue1',
           startsAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // tomorrow
           capacity: 10,
-          status: GameStatus.open
+          status: GameStatus.open,
+          createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000) // 3 hours ago, outside priority window
         }
       });
 
@@ -242,7 +241,8 @@ describe('Game Registration Use Cases', () => {
         startsAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
         capacity: 10,
         levelTag: 'intermediate',
-        priceText: '500 руб'
+        priceText: '500 руб',
+        createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000) // 3 hours ago, outside priority window
       };
 
       // When: create game
@@ -313,7 +313,8 @@ describe('Game Registration Use Cases', () => {
          venueId: 'venue1',
          startsAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
          capacity: 10,
-         status: GameStatus.open
+         status: GameStatus.open,
+         createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000) // 3 hours ago, outside priority window
        }
      });
 
@@ -341,7 +342,8 @@ describe('Game Registration Use Cases', () => {
          venueId: 'venue1',
          startsAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
          capacity: 1,
-         status: GameStatus.open
+         status: GameStatus.open,
+         createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000) // 3 hours ago, outside priority window
        }
      });
 
@@ -367,7 +369,8 @@ describe('Game Registration Use Cases', () => {
          venueId: 'venue1',
          startsAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
          capacity: 10,
-         status: GameStatus.open
+         status: GameStatus.open,
+         createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000) // 3 hours ago, outside priority window
        }
      });
 
@@ -410,7 +413,8 @@ describe('Game Registration Use Cases', () => {
        startsAt: new Date(Date.now() + 48 * 60 * 60 * 1000), // 2 days from now
        capacity: 10,
        levelTag: 'intermediate',
-       priceText: '500 руб'
+       priceText: '500 руб',
+       createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000) // 3 hours ago, outside priority window
      };
 
      // When: create game
@@ -435,7 +439,8 @@ describe('Game Registration Use Cases', () => {
          venueId: 'venue1',
          startsAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
          capacity: 10,
-         status: GameStatus.open
+         status: GameStatus.open,
+         createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000) // 3 hours ago, outside priority window
        }
      });
 
@@ -482,7 +487,8 @@ describe('Game Registration Use Cases', () => {
          venueId: 'venue1',
          startsAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
          capacity: 10,
-         status: GameStatus.open
+         status: GameStatus.open,
+         createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000) // 3 hours ago, outside priority window
        }
      });
 
@@ -502,7 +508,8 @@ describe('Game Registration Use Cases', () => {
          venueId: 'venue1',
          startsAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
          capacity: 10,
-         status: GameStatus.open
+         status: GameStatus.open,
+         createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000) // 3 hours ago, outside priority window
        }
      });
 

@@ -19,6 +19,9 @@ export const LOG_MESSAGES = {
     REGISTER_USER_PROCESSING: 'Обработка запроса на регистрацию пользователя',
     REGISTER_USER_COMPLETED: 'Регистрация пользователя завершена успешно',
     REGISTER_USER_FAILED: 'Регистрация пользователя не удалась',
+    REGISTER_ORGANIZER_PROCESSING: 'Обработка запроса на регистрацию организатора',
+    REGISTER_ORGANIZER_COMPLETED: 'Регистрация организатора завершена успешно',
+    REGISTER_ORGANIZER_FAILED: 'Регистрация организатора не удалась',
   },
 
   // Application Services

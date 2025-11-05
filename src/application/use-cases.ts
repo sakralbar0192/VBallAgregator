@@ -2,18 +2,12 @@
   import { RegStatus } from '../domain/registration.js';
   import type { GameRepo, RegistrationRepo } from '../infrastructure/repositories.js';
   import { PrismaGameRepo, PrismaRegistrationRepo, PrismaUserRepo } from '../infrastructure/repositories.js';
-  import { logger } from '../shared/logger.js';
   import { LoggerFactory } from '../shared/layer-logger.js';
   import { LOG_MESSAGES } from '../shared/logging-messages.js';
   import { DomainError } from '../domain/errors.js';
   import { InputValidator } from '../shared/input-validator.js';
   import { ValidationError } from '../domain/errors/validation-error.js';
-  import {
-    GameNotOpenError,
-    GameAlreadyStartedError,
-    CapacityReachedError,
-    AlreadyRegisteredError
-  } from '../domain/errors/game-errors.js';
+  import { GameAlreadyStartedError } from '../domain/errors/game-errors.js';
   import { prisma } from '../infrastructure/prisma.js';
   import { GameApplicationService } from './services/game-service.js';
   import { UserApplicationService } from './services/user-service.js';
@@ -119,7 +113,13 @@
     InputValidator.validateRequired(gameId, 'gameId');
     InputValidator.validateRequired(userId, 'userId');
 
-    logger.info('leaveGame called', { gameId, userId });
+    const useCaseLogger = LoggerFactory.useCase('leaveGame');
+    const correlationId = `leave_${userId}_${gameId}_${Date.now()}`;
+
+    useCaseLogger.info('leaveGame', 'Обработка запроса на выход из игры',
+      { gameId, userId },
+      { correlationId }
+    );
 
     return prisma.$transaction(async (tx: any) => {
       const reg = await registrationRepo.get(gameId, userId);
@@ -128,14 +128,20 @@
 
       reg.cancel();
       await registrationRepo.upsert(reg);
-      logger.info('User left game', { gameId, userId });
+      useCaseLogger.info('leaveGame', 'Пользователь вышел из игры',
+        { gameId, userId },
+        { correlationId }
+      );
       await eventBus.publish({ type: 'RegistrationCanceled', occurredAt: new Date(), id: '', payload: { gameId, userId } });
 
       // Продвинуть следующего из списка ожидания
       const next = await registrationRepo.firstWaitlisted(gameId);
       if (next) {
         await registrationRepo.promoteToConfirmed(next.id);
-        logger.info('Waitlisted user promoted', { gameId, promotedUserId: next.userId });
+        useCaseLogger.info('leaveGame', 'Пользователь из списка ожидания повышен до подтвержденного',
+          { gameId, promotedUserId: next.userId },
+          { correlationId }
+        );
         await eventBus.publish({ type: 'WaitlistedPromoted', occurredAt: new Date(), id: '', payload: { gameId, userId: next.userId } });
       }
 
@@ -155,10 +161,21 @@
     InputValidator.validateRequired(gameId, 'gameId');
     InputValidator.validateRequired(userId, 'userId');
 
-    logger.info('markPayment called', { gameId, userId });
+    const useCaseLogger = LoggerFactory.useCase('markPayment');
+    const correlationId = `mark_payment_${userId}_${gameId}_${Date.now()}`;
+
+    useCaseLogger.info('markPayment', 'Обработка запроса на отметку оплаты',
+      { gameId, userId },
+      { correlationId }
+    );
 
     // Use new Application Service
     await gameApplicationService.markPayment({ gameId, userId });
+
+    useCaseLogger.info('markPayment', 'Оплата отмечена успешно',
+      { gameId, userId },
+      { correlationId, executionTimeMs: Date.now() - parseInt(correlationId.split('_')[3] || '0') }
+    );
 
     return { ok: true };
   }
@@ -172,7 +189,13 @@
     // Валидация входных данных
     InputValidator.validateRequired(gameId, 'gameId');
 
-    logger.info('scheduleGameReminders called', { gameId });
+    const useCaseLogger = LoggerFactory.useCase('scheduleGameReminders');
+    const correlationId = `schedule_reminders_${gameId}_${Date.now()}`;
+
+    useCaseLogger.info('scheduleGameReminders', 'Обработка запроса на планирование напоминаний игры',
+      { gameId },
+      { correlationId }
+    );
 
     const game = await gameRepo.findById(gameId);
     if (!game) throw new DomainError('NOT_FOUND', 'Игра не найдена');
@@ -181,7 +204,10 @@
     await schedulerService.scheduleGameReminder24h(gameId, game.startsAt);
     await schedulerService.initializeWorkers(); // Ensure workers are running
 
-    logger.info('Game reminders scheduled', { gameId });
+    useCaseLogger.info('scheduleGameReminders', 'Напоминания игры запланированы',
+      { gameId },
+      { correlationId, executionTimeMs: Date.now() - parseInt(correlationId.split('_')[2] || '0') }
+    );
   }
 
   /**
@@ -193,7 +219,13 @@
     // Валидация входных данных
     InputValidator.validateRequired(gameId, 'gameId');
 
-    logger.info('schedulePaymentReminders called', { gameId });
+    const useCaseLogger = LoggerFactory.useCase('schedulePaymentReminders');
+    const correlationId = `schedule_payment_reminders_${gameId}_${Date.now()}`;
+
+    useCaseLogger.info('schedulePaymentReminders', 'Обработка запроса на планирование напоминаний оплаты',
+      { gameId },
+      { correlationId }
+    );
 
     const game = await gameRepo.findById(gameId);
     if (!game) throw new DomainError('NOT_FOUND', 'Игра не найдена');
@@ -202,7 +234,10 @@
     await schedulerService.schedulePaymentReminder12h(gameId, game.startsAt);
     await schedulerService.schedulePaymentReminder24h(gameId, game.startsAt);
 
-    logger.info('Payment reminders scheduled', { gameId });
+    useCaseLogger.info('schedulePaymentReminders', 'Напоминания оплаты запланированы',
+      { gameId },
+      { correlationId, executionTimeMs: Date.now() - parseInt(correlationId.split('_')[3] || '0') }
+    );
   }
 
   /**
@@ -216,7 +251,13 @@
     InputValidator.validateRequired(gameId, 'gameId');
     InputValidator.validateRequired(organizerId, 'organizerId');
 
-    logger.info('sendPaymentReminders called', { gameId, organizerId });
+    const useCaseLogger = LoggerFactory.useCase('sendPaymentReminders');
+    const correlationId = `send_payment_reminders_${gameId}_${organizerId}_${Date.now()}`;
+
+    useCaseLogger.info('sendPaymentReminders', 'Обработка запроса на отправку напоминаний оплаты',
+      { gameId, organizerId },
+      { correlationId }
+    );
 
     // Проверить, что организатор владеет игрой
     const game = await prisma.game.findUnique({
@@ -247,7 +288,10 @@
       }
     });
 
-    logger.info('Payment reminders sent', { gameId, count: game.registrations.length });
+    useCaseLogger.info('sendPaymentReminders', 'Напоминания оплаты отправлены',
+      { gameId, count: game.registrations.length },
+      { correlationId, executionTimeMs: Date.now() - parseInt(correlationId.split('_')[3] || '0') }
+    );
 
     return { sent: game.registrations.length };
   }
@@ -280,10 +324,23 @@
       throw new ValidationError('capacity', data.capacity, 'max_100');
     }
 
-    logger.info('createGame called', { organizerId: data.organizerId, venueId: data.venueId, capacity: data.capacity });
+    const useCaseLogger = LoggerFactory.useCase('createGame');
+    const correlationId = `create_game_${data.organizerId}_${Date.now()}`;
+
+    useCaseLogger.info('createGame', 'Обработка запроса на создание игры',
+      { organizerId: data.organizerId, venueId: data.venueId, capacity: data.capacity },
+      { correlationId }
+    );
 
     // Use new Application Service
-    return await gameApplicationService.createGame(data);
+    const result = await gameApplicationService.createGame(data);
+
+    useCaseLogger.info('createGame', 'Игра создана успешно',
+      { gameId: result.id, organizerId: data.organizerId },
+      { correlationId, executionTimeMs: Date.now() - parseInt(correlationId.split('_')[2] || '0') }
+    );
+
+    return result;
   }
 
   /**
@@ -331,14 +388,26 @@
    * @param {string} levelTag - Уровень игры.
    * @returns {Promise<{ ok: boolean }>} - Успех операции.
    */
-  export async function updateUserLevel(userId: string, levelTag: string | undefined) {
+  export async function updateUserLevel(userId: string, levelTag: string | undefined): Promise<{ ok: boolean; }> {
     // Валидация входных данных
     InputValidator.validateRequired(userId, 'userId');
 
-    logger.info('updateUserLevel called', { userId, levelTag });
+    const useCaseLogger = LoggerFactory.useCase('updateUserLevel');
+    const correlationId = `update_level_${userId}_${Date.now()}`;
 
-    // Use new Application Service
-    return await userApplicationService.updateUserLevel({ userId, levelTag });
+    useCaseLogger.info('updateUserLevel', 'Обработка запроса на обновление уровня пользователя',
+      { userId, levelTag },
+      { correlationId }
+    );
+
+    const result = await userApplicationService.updateUserLevel({ userId, levelTag });
+
+    useCaseLogger.info('updateUserLevel', 'Уровень пользователя обновлен',
+      { userId, levelTag },
+      { correlationId, executionTimeMs: Date.now() - parseInt(correlationId.split('_')[2] || '0') }
+    );
+
+    return result;
   }
 
   /**
@@ -347,16 +416,37 @@
    * @param {string} title - Название организатора.
    * @returns {Promise<{ ok: boolean }>} - Успех операции.
    */
-  export async function registerOrganizer(userId: string, title: string) {
+  export async function registerOrganizer(userId: string, title: string): Promise<{ ok: boolean; }> {
     // Валидация входных данных
     InputValidator.validateRequired(userId, 'userId');
     InputValidator.validateRequired(title, 'title');
     InputValidator.validateStringLength(title, 'title', 1, 100);
 
-    logger.info('registerOrganizer called', { userId, title });
+    const useCaseLogger = LoggerFactory.useCase('registerOrganizer');
+    const correlationId = `register_org_${userId}_${Date.now()}`;
 
-    // Use new Application Service
-    return await gameApplicationService.registerOrganizer({ userId, title });
+    useCaseLogger.info('registerOrganizer', LOG_MESSAGES.USE_CASES.REGISTER_ORGANIZER_PROCESSING,
+      { userId, title },
+      { correlationId }
+    );
+
+    try {
+      const result = await gameApplicationService.registerOrganizer({ userId, title });
+
+      useCaseLogger.info('registerOrganizer', LOG_MESSAGES.USE_CASES.REGISTER_ORGANIZER_COMPLETED,
+        { userId, title },
+        { correlationId, executionTimeMs: Date.now() - parseInt(correlationId.split('_')[2] || '0') }
+      );
+
+      return result;
+    } catch (error) {
+      useCaseLogger.error('registerOrganizer', LOG_MESSAGES.USE_CASES.REGISTER_ORGANIZER_FAILED,
+        error as Error,
+        { userId, title, error: (error as Error).message },
+        { correlationId }
+      );
+      throw error;
+    }
   }
 
   /**
@@ -425,7 +515,13 @@
     InputValidator.validateRequired(gameId, 'gameId');
     InputValidator.validateRequired(organizerId, 'organizerId');
 
-    logger.info('closeGame called', { gameId, organizerId });
+    const useCaseLogger = LoggerFactory.useCase('closeGame');
+    const correlationId = `close_game_${gameId}_${organizerId}_${Date.now()}`;
+
+    useCaseLogger.info('closeGame', 'Обработка запроса на закрытие игры',
+      { gameId, organizerId },
+      { correlationId }
+    );
 
     // Проверить, что организатор владеет игрой
     const game = await gameRepo.findById(gameId);
@@ -437,7 +533,10 @@
     }
 
     await gameRepo.updateStatus(gameId, GameStatus.closed);
-    logger.info('Game closed', { gameId });
+    useCaseLogger.info('closeGame', 'Игра закрыта',
+      { gameId },
+      { correlationId, executionTimeMs: Date.now() - parseInt(correlationId.split('_')[3] || '0') }
+    );
     await eventBus.publish({ type: 'GameClosed', occurredAt: new Date(), id: '', payload: { gameId } });
   }
 
@@ -450,12 +549,21 @@
     // Валидация входных данных
     InputValidator.validateRequired(gameId, 'gameId');
 
-    logger.info('finishGame called', { gameId });
+    const useCaseLogger = LoggerFactory.useCase('finishGame');
+    const correlationId = `finish_game_${gameId}_${Date.now()}`;
+
+    useCaseLogger.info('finishGame', 'Обработка запроса на завершение игры',
+      { gameId },
+      { correlationId }
+    );
 
     // Use new Application Service
     await gameApplicationService.finishGame(gameId);
 
-    logger.info('Game finished and payment reminders scheduled', { gameId });
+    useCaseLogger.info('finishGame', 'Игра завершена и напоминания оплаты запланированы',
+      { gameId },
+      { correlationId, executionTimeMs: Date.now() - parseInt(correlationId.split('_')[2] || '0') }
+    );
   }
 
   /**
@@ -471,7 +579,13 @@
       throw new ValidationError('organizerIds', organizerIds, 'not_empty_array');
     }
 
-    logger.info('selectOrganizers called', { playerId, organizerIds });
+    const useCaseLogger = LoggerFactory.useCase('selectOrganizers');
+    const correlationId = `select_orgs_${playerId}_${Date.now()}`;
+
+    useCaseLogger.info('selectOrganizers', 'Обработка запроса на выбор организаторов',
+      { playerId, organizerIds },
+      { correlationId }
+    );
 
     // Проверить существование игрока
     const player = await prisma.user.findUnique({ where: { id: playerId } });
@@ -497,7 +611,10 @@
       skipDuplicates: true, // Игнорировать дубликаты
     });
 
-    logger.info('Organizers selected', { playerId, organizerIds });
+    useCaseLogger.info('selectOrganizers', 'Организаторы выбраны',
+      { playerId, organizerIds },
+      { correlationId, executionTimeMs: Date.now() - parseInt(correlationId.split('_')[2] || '0') }
+    );
     await eventBus.publish({
       type: 'PlayerSelectedOrganizers',
       occurredAt: new Date(),
@@ -519,7 +636,13 @@
     InputValidator.validateRequired(organizerId, 'organizerId');
     InputValidator.validateRequired(playerId, 'playerId');
 
-    logger.info('confirmPlayer called', { organizerId, playerId });
+    const useCaseLogger = LoggerFactory.useCase('confirmPlayer');
+    const correlationId = `confirm_player_${organizerId}_${playerId}_${Date.now()}`;
+
+    useCaseLogger.info('confirmPlayer', 'Обработка запроса на подтверждение игрока',
+      { organizerId, playerId },
+      { correlationId }
+    );
 
     // Проверить существование связи со статусом pending
     const playerOrganizer = await (prisma as any).playerOrganizer.findUnique({
@@ -544,7 +667,10 @@
       select: { name: true }
     });
 
-    logger.info('Player confirmed', { organizerId, playerId });
+    useCaseLogger.info('confirmPlayer', 'Игрок подтвержден',
+      { organizerId, playerId },
+      { correlationId, executionTimeMs: Date.now() - parseInt(correlationId.split('_')[3] || '0') }
+    );
     await eventBus.publish({
       type: 'PlayerConfirmedByOrganizer',
       occurredAt: new Date(),
@@ -566,7 +692,13 @@
     InputValidator.validateRequired(organizerId, 'organizerId');
     InputValidator.validateRequired(playerId, 'playerId');
 
-    logger.info('rejectPlayer called', { organizerId, playerId });
+    const useCaseLogger = LoggerFactory.useCase('rejectPlayer');
+    const correlationId = `reject_player_${organizerId}_${playerId}_${Date.now()}`;
+
+    useCaseLogger.info('rejectPlayer', 'Обработка запроса на отклонение игрока',
+      { organizerId, playerId },
+      { correlationId }
+    );
 
     // Обновить статус на rejected
     const result = await (prisma as any).playerOrganizer.updateMany({
@@ -588,7 +720,10 @@
       select: { name: true }
     });
 
-    logger.info('Player rejected', { organizerId, playerId });
+    useCaseLogger.info('rejectPlayer', 'Игрок отклонен',
+      { organizerId, playerId },
+      { correlationId, executionTimeMs: Date.now() - parseInt(correlationId.split('_')[3] || '0') }
+    );
     await eventBus.publish({
       type: 'PlayerRejectedByOrganizer',
       occurredAt: new Date(),
@@ -609,7 +744,13 @@
     // Валидация входных данных
     InputValidator.validateRequired(organizerId, 'organizerId');
 
-    logger.info('getOrganizerPlayers called', { organizerId, status });
+    const useCaseLogger = LoggerFactory.useCase('getOrganizerPlayers');
+    const correlationId = `get_org_players_${organizerId}_${Date.now()}`;
+
+    useCaseLogger.info('getOrganizerPlayers', 'Обработка запроса на получение игроков организатора',
+      { organizerId, status },
+      { correlationId }
+    );
 
     const where: any = { organizerId };
     if (status) {
@@ -625,6 +766,11 @@
       },
       orderBy: { requestedAt: 'desc' }
     });
+
+    useCaseLogger.info('getOrganizerPlayers', 'Игроки организатора получены',
+      { organizerId, count: playerOrganizers.length },
+      { correlationId, executionTimeMs: Date.now() - parseInt(correlationId.split('_')[2] || '0') }
+    );
 
     return playerOrganizers.map((po: any) => ({
       playerId: po.player.id,
@@ -642,13 +788,19 @@
     * @param {string} gameId - ID игры.
     */
    async function checkIfAllPriorityPlayersResponded(gameId: string): Promise<void> {
+     const useCaseLogger = LoggerFactory.useCase('checkIfAllPriorityPlayersResponded');
+     const correlationId = `check_priority_${gameId}_${Date.now()}`;
+
      const game = await prisma.game.findUnique({
        where: { id: gameId },
        select: { organizerId: true }
      });
 
      if (!game) {
-       logger.warn('Game not found for priority check', { gameId });
+       useCaseLogger.warn('checkIfAllPriorityPlayersResponded', 'Игра не найдена для проверки приоритета',
+         { gameId },
+         { correlationId }
+       );
        return;
      }
 
@@ -663,7 +815,10 @@
 
      if (confirmedPlayers.length === 0) {
        // Нет приоритетных игроков — сразу открываем для всех
-       logger.info('No priority players for game, publishing for all', { gameId });
+       useCaseLogger.info('checkIfAllPriorityPlayersResponded', 'Нет приоритетных игроков для игры, открываем для всех',
+         { gameId },
+         { correlationId }
+       );
        await eventBus.publish({
          type: 'GamePublishedForAll',
          occurredAt: new Date(),
@@ -687,7 +842,10 @@
        responses.every((r: any) => r.response !== 'ignored');
 
      if (allResponded) {
-       logger.info('All priority players responded, publishing game for all', { gameId, playerCount: confirmedPlayers.length });
+       useCaseLogger.info('checkIfAllPriorityPlayersResponded', 'Все приоритетные игроки ответили, открываем игру для всех',
+         { gameId, playerCount: confirmedPlayers.length },
+         { correlationId }
+       );
        await eventBus.publish({
          type: 'GamePublishedForAll',
          occurredAt: new Date(),
@@ -695,11 +853,14 @@
          payload: { gameId }
        });
      } else {
-       logger.info('Not all priority players responded yet', {
-         gameId,
-         responded: responses.length,
-         total: confirmedPlayers.length
-       });
+       useCaseLogger.info('checkIfAllPriorityPlayersResponded', 'Не все приоритетные игроки ответили',
+         {
+           gameId,
+           responded: responses.length,
+           total: confirmedPlayers.length
+         },
+         { correlationId }
+       );
      }
    }
 
@@ -716,7 +877,13 @@
     InputValidator.validateRequired(playerId, 'playerId');
     InputValidator.validateEnum(response, 'response', ['yes', 'no', 'ignored']);
 
-    logger.info('respondToGameInvitation called', { gameId, playerId, response });
+    const useCaseLogger = LoggerFactory.useCase('respondToGameInvitation');
+    const correlationId = `respond_invitation_${gameId}_${playerId}_${Date.now()}`;
+
+    useCaseLogger.info('respondToGameInvitation', 'Обработка ответа на приглашение к игре',
+      { gameId, playerId, response },
+      { correlationId }
+    );
 
     // Проверить, что игрок — подтвержденный игрок организатора игры
     const game = await prisma.game.findUnique({
@@ -756,7 +923,10 @@
       }
     });
 
-    logger.info('Player responded to game invitation', { gameId, playerId, response });
+    useCaseLogger.info('respondToGameInvitation', 'Игрок ответил на приглашение к игре',
+      { gameId, playerId, response },
+      { correlationId, executionTimeMs: Date.now() - parseInt(correlationId.split('_')[3] || '0') }
+    );
     await eventBus.publish({
       type: 'PlayerRespondedToGameInvitation',
       occurredAt: new Date(),
@@ -779,7 +949,13 @@
     // Валидация входных данных
     InputValidator.validateRequired(gameId, 'gameId');
 
-    logger.info('notifyConfirmedPlayersAboutGame called', { gameId });
+    const useCaseLogger = LoggerFactory.useCase('notifyConfirmedPlayersAboutGame');
+    const correlationId = `notify_players_${gameId}_${Date.now()}`;
+
+    useCaseLogger.info('notifyConfirmedPlayersAboutGame', 'Обработка уведомления подтвержденных игроков о игре',
+      { gameId },
+      { correlationId }
+    );
 
     // Найти игру и организатора
     const game = await prisma.game.findUnique({
@@ -829,7 +1005,10 @@
       }
     });
 
-    logger.info('Confirmed players notified about game', { gameId, playerCount: confirmedPlayers.length });
+    useCaseLogger.info('notifyConfirmedPlayersAboutGame', 'Подтвержденные игроки уведомлены о игре',
+      { gameId, playerCount: confirmedPlayers.length },
+      { correlationId, executionTimeMs: Date.now() - parseInt(correlationId.split('_')[2] || '0') }
+    );
   }
 
   /**
@@ -842,7 +1021,13 @@
     // Валидация входных данных
     InputValidator.validateRequired(gameId, 'gameId');
 
-    logger.info('checkPriorityWindowExpiration called', { gameId });
+    const useCaseLogger = LoggerFactory.useCase('checkPriorityWindowExpiration');
+    const correlationId = `check_expiration_${gameId}_${Date.now()}`;
+
+    useCaseLogger.info('checkPriorityWindowExpiration', 'Обработка проверки истечения приоритетного окна',
+      { gameId },
+      { correlationId }
+    );
 
     const game = await prisma.game.findUnique({
       where: { id: gameId },
@@ -850,19 +1035,28 @@
     });
 
     if (!game || game.status !== 'open') {
-      logger.info('Game not found or not open', { gameId });
+      useCaseLogger.info('checkPriorityWindowExpiration', 'Игра не найдена или не открыта',
+        { gameId },
+        { correlationId }
+      );
       return;
     }
 
     // Проверить, истекло ли приоритетное окно (2 часа после создания)
     const priorityWindowClosesAt = new Date(game.createdAt.getTime() + 2 * 60 * 60 * 1000);
     if (priorityWindowClosesAt > new Date()) {
-      logger.info('Priority window not expired yet', { gameId, closesAt: priorityWindowClosesAt });
+      useCaseLogger.info('checkPriorityWindowExpiration', 'Приоритетное окно еще не истекло',
+        { gameId, closesAt: priorityWindowClosesAt },
+        { correlationId }
+      );
       return;
     }
 
     // Приоритетное окно истекло — публикуем игру для всех
-    logger.info('Priority window expired, publishing game for all players', { gameId });
+    useCaseLogger.info('checkPriorityWindowExpiration', 'Приоритетное окно истекло, открываем игру для всех игроков',
+      { gameId },
+      { correlationId, executionTimeMs: Date.now() - parseInt(correlationId.split('_')[2] || '0') }
+    );
     await eventBus.publish({
       type: 'GamePublishedForAll',
       occurredAt: new Date(),
@@ -882,7 +1076,13 @@
     InputValidator.validateRequired(playerId, 'playerId');
     InputValidator.validateRequired(organizerId, 'organizerId');
 
-    logger.info('linkPlayerToOrganizer called', { playerId, organizerId });
+    const useCaseLogger = LoggerFactory.useCase('linkPlayerToOrganizer');
+    const correlationId = `link_player_${playerId}_${organizerId}_${Date.now()}`;
+
+    useCaseLogger.info('linkPlayerToOrganizer', 'Обработка привязки игрока к организатору',
+      { playerId, organizerId },
+      { correlationId }
+    );
 
     // Проверить существование игрока и организатора
     const player = await prisma.user.findUnique({ where: { id: playerId } });
@@ -893,7 +1093,10 @@
 
     // Здесь можно добавить логику создания связи, если нужна таблица
     // Пока просто публикуем событие для уведомления
-    logger.info('Player linked to organizer', { playerId, organizerId, playerName: player.name });
+    useCaseLogger.info('linkPlayerToOrganizer', 'Игрок привязан к организатору',
+      { playerId, organizerId, playerName: player.name },
+      { correlationId, executionTimeMs: Date.now() - parseInt(correlationId.split('_')[3] || '0') }
+    );
     await eventBus.publish({
       type: 'PlayerLinkedToOrganizer',
       occurredAt: new Date(),

@@ -1,5 +1,4 @@
 import { UserRepo } from '../../infrastructure/repositories.js';
-import { logger } from '../../shared/logger.js';
 import { LoggerFactory } from '../../shared/layer-logger.js';
 import { LOG_MESSAGES } from '../../shared/logging-messages.js';
 
@@ -67,11 +66,22 @@ export class UserApplicationService {
    * @returns {Promise<{ok: boolean}>} Результат операции
    */
   async updateUserLevel(command: UpdateUserLevelCommand): Promise<{ ok: boolean }> {
+    const serviceLogger = LoggerFactory.service('user-service');
+
+    serviceLogger.info('updateUserLevel', 'Обновление уровня пользователя',
+      { userId: command.userId, levelTag: command.levelTag },
+      {}
+    );
+
     await this.userRepo.transaction(async () => {
       await this.userRepo.updateUserLevel(command.userId, command.levelTag);
     });
 
-    logger.info('User level updated', { userId: command.userId, levelTag: command.levelTag });
+    serviceLogger.info('updateUserLevel', 'Уровень пользователя успешно обновлен',
+      { userId: command.userId, levelTag: command.levelTag },
+      { executionTimeMs: Date.now() % 1000 }
+    );
+
     return { ok: true };
   }
 }

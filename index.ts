@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { validateConfig, config } from './src/shared/config.js';
-import { bot } from './src/bot.js';
+import { bot } from './src/bot/bot.js';
 import { SchedulerService } from './src/shared/scheduler-service.js';
 import { EventBus } from './src/shared/event-bus.js';
 import { HealthCheckService } from './src/infrastructure/health.js';

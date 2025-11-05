@@ -1,6 +1,8 @@
 import { prisma } from './prisma.js';
 import { Game, GameStatus } from '../domain/game.js';
 import { Registration, RegStatus, PaymentStatus } from '../domain/registration.js';
+import { LoggerFactory } from '../shared/layer-logger.js';
+import { LOG_MESSAGES } from '../shared/logging-messages.js';
 
 export interface GameRepo {
   findById(id: string): Promise<Game | null>;
@@ -17,6 +19,12 @@ export interface RegistrationRepo {
   upsert(reg: Registration): Promise<void>;
   firstWaitlisted(gameId: string): Promise<Registration | null>;
   promoteToConfirmed(regId: string): Promise<void>;
+}
+
+export interface UserRepo {
+  upsertUser(telegramId: number | bigint, name: string): Promise<{ id: string; telegramId: number | bigint; name: string }>;
+  updateUserLevel(userId: string, levelTag?: string): Promise<void>;
+  transaction<T>(fn: () => Promise<T>): Promise<T>;
 }
 
 export class PrismaGameRepo implements GameRepo {
@@ -179,6 +187,41 @@ export class PrismaRegistrationRepo implements RegistrationRepo {
     await prisma.registration.update({
       where: { id: regId },
       data: { status: RegStatus.confirmed }
+    });
+  }
+
+  async transaction<T>(fn: () => Promise<T>): Promise<T> {
+    return prisma.$transaction(fn);
+  }
+}
+
+export class PrismaUserRepo implements UserRepo {
+  async upsertUser(telegramId: number | bigint, name: string): Promise<{ id: string; telegramId: number | bigint; name: string }> {
+    const repositoryLogger = LoggerFactory.repository('prisma-user-repo');
+
+    repositoryLogger.database('upsertUser', 'users', 'UPSERT', {
+      telegramId,
+      name
+    });
+
+    const user = await prisma.user.upsert({
+      where: { telegramId },
+      update: { name },
+      create: { telegramId, name }
+    });
+
+    repositoryLogger.info('upsertUser', LOG_MESSAGES.REPOSITORIES.USER_UPSERT_COMPLETED,
+      { userId: user.id, telegramId: user.telegramId },
+      { executionTimeMs: Date.now() % 1000 }
+    );
+
+    return { id: user.id, telegramId: user.telegramId, name: user.name };
+  }
+
+  async updateUserLevel(userId: string, levelTag?: string): Promise<void> {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { levelTag }
     });
   }
 

@@ -5,7 +5,7 @@ import { prisma } from '../infrastructure/prisma.js';
 import { formatGameTimeForNotification, formatDateForButton } from '../shared/date-utils.js';
 import { ErrorHandler } from '../shared/error-handler.js';
 import { userPreferencesService } from '../shared/user-preferences-service.js';
-import { getVenueName, getRegistrationStatusName, getPaymentStatusName, getGameStatusName, getOrganizerName } from '../shared/game-constants.js';
+import { getVenueName, getRegistrationStatusName, getPaymentStatusName, getGameStatusName, getOrganizerName, getLevelName } from '../shared/game-constants.js';
 
 const GameIdSchema = z.string().uuid();
 
@@ -34,7 +34,7 @@ export class CommandHandlers {
 
     const date = formatGameTimeForNotification(game.startsAt);
     const status = getGameStatusName(game.status);
-    const level = game.levelTag ? ` (${game.levelTag})` : '';
+    const level = getLevelName(game.levelTag || "") ?? '';
     const price = game.priceText ? ` - ${game.priceText}` : '';
     const venue = getVenueName(game.venueId);
     const organizer = game.organizer.title

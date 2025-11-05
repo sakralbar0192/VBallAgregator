@@ -3,6 +3,8 @@ import { registerUser, updateUserLevel, registerOrganizer } from './application/
 import { GameCreationWizard } from './bot/game-creation-wizard.js';
 import { CommandHandlers } from './bot/command-handlers.js';
 import { prisma } from './infrastructure/prisma.js';
+import { LoggerFactory } from './shared/layer-logger.js';
+import { LOG_MESSAGES } from './shared/logging-messages.js';
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN!);
 
@@ -26,17 +28,37 @@ export { bot };
 bot.start(async (ctx) => {
   const telegramId = ctx.from.id;
   const name = ctx.from.first_name + (ctx.from.last_name ? ' ' + ctx.from.last_name : '');
+  const correlationId = `start_${telegramId}_${Date.now()}`;
 
-  await registerUser(telegramId, name);
+  const botLogger = LoggerFactory.bot('start-handler');
 
-  await ctx.reply('Привет! Я бот для организации волейбольных игр. Выбери свою роль:', {
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: 'Игрок', callback_data: 'role_player' }],
-        [{ text: 'Организатор', callback_data: 'role_organizer' }]
-      ]
-    }
-  });
+  botLogger.info('handleUserStart', LOG_MESSAGES.BOT.START_COMMAND_INITIATED,
+   { telegramId: Number(telegramId), firstName: ctx.from.first_name },
+   { correlationId }
+ );
+
+  try {
+    botLogger.entry('registerUser', { telegramId, name, correlationId });
+    const result = await registerUser(telegramId, name);
+    botLogger.exit('registerUser', { userId: result.userId, correlationId });
+
+    await ctx.reply('Привет! Я бот для организации волейбольных игр. Выбери свою роль:', {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: 'Игрок', callback_data: 'role_player' }],
+          [{ text: 'Организатор', callback_data: 'role_organizer' }]
+        ]
+      }
+    });
+
+  } catch (error) {
+    botLogger.error('handleUserStart', LOG_MESSAGES.BOT.START_COMMAND_FAILED,
+      error as Error,
+      { telegramId, error: (error as Error).message },
+      { correlationId }
+    );
+    throw error;
+  }
 });
 
 /**

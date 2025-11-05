@@ -2,6 +2,7 @@ import { Context } from 'telegraf';
 import { createGame } from '../application/use-cases.js';
 import { prisma } from '../infrastructure/prisma.js';
 import { formatGameTimeForNotification, getUserTimezone, getMinGameStartTime, isTodayInTimezone, getCurrentTimeInTimezone } from '../shared/date-utils.js';
+import { getVenueName, VENUE_IDS } from '../shared/game-constants.js';
 
 export class GameCreationWizard {
   private static sessions = new Map<number, Partial<GameCreationSession>>();
@@ -140,12 +141,18 @@ export class GameCreationWizard {
     session.levelTag = levelNames[level] || level;
 
     // Шаг 4: выбор площадки
-    await ctx.editMessageText(`📅 ${session.date.toLocaleDateString('ru-RU')} в ${session.date.getHours().toString().padStart(2, '0')}:00\n🎯 Уровень: ${session.levelTag}\n\n🏟️ Выбери площадку:`, {
+    await ctx.editMessageText(`📅 ${
+      session.date.toLocaleDateString('ru-RU')
+      } в ${
+        session.date.getHours().toString().padStart(2, '0')
+      }:00\n🎯 Уровень: ${
+        session.levelTag
+      }\n\n🏟️ Выбери площадку:`, {
       reply_markup: {
         inline_keyboard: [
-          [{ text: '"Чайка"', callback_data: `wizard_venue_chaika` }],
-          [{ text: '"ФОК"', callback_data: `wizard_venue_fok` }],
-          [{ text: '5-ая школа', callback_data: `wizard_venue_5th_school` }]
+          [{ text: '"Чайка"', callback_data: `wizard_venue_${VENUE_IDS.CHAIKA}` }],
+          [{ text: '"ФОК"', callback_data: `wizard_venue_${VENUE_IDS.FOK}` }],
+          [{ text: '5-ая школа', callback_data: `wizard_venue_${VENUE_IDS.FIFTH_SCHOOL}` }]
         ]
       }
     });
@@ -163,7 +170,15 @@ export class GameCreationWizard {
     (session as any).venueKey = venueKey;
 
     // Шаг 5: выбор вместимости (с default значением)
-    await ctx.editMessageText(`📅 ${session.date.toLocaleDateString('ru-RU')} в ${session.date.getHours().toString().padStart(2, '0')}:00\n🎯 Уровень: ${session.levelTag}\n🏟️ ${venueKey === 'chaika' ? '"Чайка"' : venueKey === 'fok' ? '"ФОК"' : '5-ая школа'}\n\n👥 Выбери вместимость игры:`, {
+    await ctx.editMessageText(`📅 ${
+      session.date.toLocaleDateString('ru-RU')
+      } в ${
+        session.date.getHours().toString().padStart(2, '0')
+      }:00\n🎯 Уровень: ${
+        session.levelTag
+      }\n🏟️ ${
+        getVenueName(venueKey) || ''
+      }\n\n👥 Выбери вместимость игры:`, {
       reply_markup: {
         inline_keyboard: [
           [{ text: '8 игроков', callback_data: `wizard_capacity_8` }],
@@ -185,7 +200,17 @@ export class GameCreationWizard {
     session.capacity = capacity;
 
     // Шаг 6: выбор цены
-    await ctx.editMessageText(`📅 ${session.date.toLocaleDateString('ru-RU')} в ${session.date.getHours().toString().padStart(2, '0')}:00\n🎯 Уровень: ${session.levelTag}\n🏟️ ${(session as any).venueKey === 'chaika' ? '"Чайка"' : (session as any).venueKey === 'fok' ? '"ФОК"' : '5-ая школа'}\n👥 Вместимость: ${capacity} игроков\n\n💰 Выбери стоимость игры:`, {
+    await ctx.editMessageText(`📅 ${
+      session.date.toLocaleDateString('ru-RU')
+      } в ${
+        session.date.getHours().toString().padStart(2, '0')
+      }:00\n🎯 Уровень: ${
+        session.levelTag
+      }\n🏟️ ${
+        getVenueName((session as any).venueKey) || ''
+      }\n👥 Вместимость: ${
+        capacity
+      } игроков\n\n💰 Выбери стоимость игры:`, {
       reply_markup: {
         inline_keyboard: [
           [{ text: '125₽', callback_data: `wizard_price_125` }],
@@ -216,15 +241,7 @@ export class GameCreationWizard {
       return;
     }
 
-    // Map venue keys to IDs
-    const venueMap: Record<string, string> = {
-      chaika: 'venue-chaika-id',
-      fok: 'venue-fok-id',
-      "5th_school": 'venue-5th-school-id'
-    };
-
-    const venueKey = (session as any).venueKey;
-    const venueId = venueMap[venueKey];
+    const venueId = (session as any).venueKey;
     if (!venueId) {
       await ctx.editMessageText('Площадка не найдена');
       return;
@@ -245,11 +262,22 @@ export class GameCreationWizard {
       // Очищаем сессию
       this.sessions.delete(telegramId);
 
-      const venueName = venueKey === 'chaika' ? '"Чайка"' :
-                        venueKey === 'fok' ? '"ФОК"' : '5-ая школа';
-
       await ctx.editMessageText(
-        `✅ Игра создана!\n\n📅 ${formatGameTimeForNotification(session.date)}\n🎯 Уровень: ${session.levelTag}\n🏟️ ${venueName}\n👥 Вместимость: ${session.capacity} игроков\n💰 ${priceText}\n\nID игры: \`${game.id}\`\n\nРасскажи друзьям: \`/join ${game.id}\``,
+        `✅ Игра создана!\n\n📅 ${
+          formatGameTimeForNotification(session.date)
+        }\n🎯 Уровень: ${
+          session.levelTag
+        }\n🏟️ ${
+          getVenueName(venueId) || ''
+        }\n👥 Вместимость: ${
+          session.capacity
+        } игроков\n💰 ${
+          priceText
+        }\n\nID игры: \`${
+          game.id
+        }\`\n\nРасскажи друзьям: \`/join ${
+          game.id
+        }\``,
         { parse_mode: 'Markdown' }
       );
     } catch (error: any) {

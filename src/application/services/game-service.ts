@@ -7,6 +7,8 @@ import { Game } from '../../domain/game.js';
 import { logger } from '../../shared/logger.js';
 import { DomainError } from '../../domain/errors.js';
 import { metrics } from '../../shared/metrics.js';
+import { LoggerFactory } from '../../shared/layer-logger.js';
+import { LOG_MESSAGES } from '../../shared/logging-messages.js';
 
 export interface MarkPaymentCommand {
   gameId: string;
@@ -25,16 +27,6 @@ export interface CreateGameCommand {
   capacity: number;
   levelTag?: string;
   priceText?: string;
-}
-
-export interface RegisterUserCommand {
-  telegramId: number | bigint;
-  name: string;
-}
-
-export interface UpdateUserLevelCommand {
-  userId: string;
-  levelTag?: string;
 }
 
 export interface RegisterOrganizerCommand {
@@ -139,15 +131,32 @@ export class GameApplicationService {
    * });
    */
   async createGame(command: CreateGameCommand): Promise<Game> {
+    const serviceLogger = LoggerFactory.service('game-service');
+    const correlationId = `create_game_${command.organizerId}_${Date.now()}`;
+
+    serviceLogger.info('createGame', LOG_MESSAGES.SERVICES.GAME_SERVICE_CREATE_START,
+      { organizerId: command.organizerId, venueId: command.venueId, capacity: command.capacity },
+      { correlationId }
+    );
+
     // Get organizer record to ensure it exists
     const organizer = await (this.gameRepo as any).getOrganizerByUserId(command.organizerId);
     if (!organizer) {
+      serviceLogger.error('createGame', LOG_MESSAGES.SERVICES.GAME_SERVICE_ORGANIZER_NOT_FOUND,
+        new DomainError('NOT_FOUND', 'Организатор не найден'),
+        { organizerId: command.organizerId },
+        { correlationId }
+      );
       throw new DomainError('NOT_FOUND', 'Организатор не найден');
     }
 
     // Check if venue is available at the specified time
     const conflictingGame = await this.gameRepo.findConflictingGame(command.venueId, command.startsAt);
     if (conflictingGame) {
+      serviceLogger.warn('createGame', LOG_MESSAGES.SERVICES.GAME_SERVICE_VENUE_CONFLICT,
+        { venueId: command.venueId, startsAt: command.startsAt, conflictingGameId: conflictingGame.id },
+        { correlationId }
+      );
       throw new DomainError('VENUE_OCCUPIED', `Площадка занята в это время. Конфликтующая игра: ${conflictingGame.id}`);
     }
 
@@ -162,7 +171,17 @@ export class GameApplicationService {
     );
 
     await this.gameRepo.insertGame(g);
-    logger.info('Game created', { gameId: g.id });
+    serviceLogger.database('createGame', 'games', 'INSERT', {
+      gameId: g.id,
+      organizerId: organizer.id,
+      venueId: command.venueId
+    });
+
+    serviceLogger.info('createGame', LOG_MESSAGES.SERVICES.GAME_SERVICE_CREATE_COMPLETED,
+      { gameId: g.id, organizerId: command.organizerId },
+      { correlationId, executionTimeMs: Date.now() - parseInt(correlationId.split('_')[2] || '0') }
+    );
+
     metrics.gamesCreated.increment();
 
     // Установить время закрытия приоритетного окна (2 часа до начала игры)
@@ -244,36 +263,6 @@ export class GameApplicationService {
     await this.schedulerService.schedulePaymentReminder24h(gameId, game.startsAt);
 
     logger.info('Game finished and payment reminders scheduled', { gameId });
-  }
-
-  async registerUser(command: RegisterUserCommand): Promise<{ userId: string }> {
-    const user = await this.gameRepo.transaction(async () => {
-      // Note: This is a simple upsert, no complex business logic needed
-      // Could be moved to a separate UserApplicationService if needed
-      const { prisma } = await import('../../infrastructure/prisma.js');
-      const user = await prisma.user.upsert({
-        where: { telegramId: command.telegramId },
-        update: { name: command.name },
-        create: { telegramId: command.telegramId, name: command.name }
-      });
-      return user;
-    });
-
-    logger.info('User registered', { userId: user.id, telegramId: command.telegramId });
-    return { userId: user.id };
-  }
-
-  async updateUserLevel(command: UpdateUserLevelCommand): Promise<{ ok: boolean }> {
-    await this.gameRepo.transaction(async () => {
-      const { prisma } = await import('../../infrastructure/prisma.js');
-      await prisma.user.update({
-        where: { id: command.userId },
-        data: { levelTag: command.levelTag }
-      });
-    });
-
-    logger.info('User level updated', { userId: command.userId, levelTag: command.levelTag });
-    return { ok: true };
   }
 
   async registerOrganizer(command: RegisterOrganizerCommand): Promise<{ ok: boolean }> {

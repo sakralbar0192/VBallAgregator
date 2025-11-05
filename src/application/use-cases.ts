@@ -1,17 +1,21 @@
   import { Game, GameStatus } from '../domain/game.js';
   import { RegStatus } from '../domain/registration.js';
   import type { GameRepo, RegistrationRepo } from '../infrastructure/repositories.js';
-  import { PrismaGameRepo, PrismaRegistrationRepo } from '../infrastructure/repositories.js';
+  import { PrismaGameRepo, PrismaRegistrationRepo, PrismaUserRepo } from '../infrastructure/repositories.js';
   import { logger } from '../shared/logger.js';
+  import { LoggerFactory } from '../shared/layer-logger.js';
+  import { LOG_MESSAGES } from '../shared/logging-messages.js';
   import { DomainError } from '../domain/errors.js';
   import { prisma } from '../infrastructure/prisma.js';
   import { GameApplicationService } from './services/game-service.js';
+  import { UserApplicationService } from './services/user-service.js';
   import { EventBus } from '../shared/event-bus.js';
   import { GameDomainService } from '../domain/services/game-domain-service.js';
   import { SchedulerService } from '../shared/scheduler-service.js';
 
   const gameRepo: GameRepo = new PrismaGameRepo();
   const registrationRepo: RegistrationRepo = new PrismaRegistrationRepo();
+  const userRepo = new PrismaUserRepo();
 
   // Initialize new services
   const eventBus = EventBus.getInstance();
@@ -24,6 +28,7 @@
     gameDomainService,
     schedulerService
   );
+  const userApplicationService = new UserApplicationService(userRepo);
 
   /**
    * Позволяет пользователю присоединиться к игре.
@@ -40,7 +45,13 @@
       throw new DomainError('INVALID_INPUT', 'userId не может быть пустым');
     }
 
-    logger.info('joinGame called', { gameId, userId });
+    const useCaseLogger = LoggerFactory.useCase('joinGame');
+    const correlationId = `join_${userId}_${gameId}_${Date.now()}`;
+
+    useCaseLogger.info('joinGame', LOG_MESSAGES.USE_CASES.JOIN_GAME_PROCESSING,
+      { gameId, userId },
+      { correlationId }
+    );
 
     // Проверить, находится ли игра в приоритетном окне
     const game = await prisma.game.findUnique({
@@ -82,7 +93,14 @@
     }
 
     // Use new Application Service
-    return await gameApplicationService.joinGame({ gameId, userId });
+    const result = await gameApplicationService.joinGame({ gameId, userId });
+
+    useCaseLogger.info('joinGame', LOG_MESSAGES.USE_CASES.JOIN_GAME_COMPLETED,
+      { gameId, userId, status: result.status },
+      { correlationId, executionTimeMs: Date.now() - parseInt(correlationId.split('_')[2] || '0') }
+    );
+
+    return result;
   }
 
   /**
@@ -284,7 +302,7 @@
    * @param {string} name - Имя пользователя.
    * @returns {Promise<{ userId: string }>} - ID созданного пользователя.
    */
-  export async function registerUser(telegramId: number | bigint, name: string) {
+  export async function registerUser(telegramId: number | bigint, name: string): Promise<{ userId: string; }> {
     if (telegramId <= 0) {
       throw new DomainError('INVALID_INPUT', 'telegramId должен быть положительным числом');
     }
@@ -292,10 +310,31 @@
       throw new DomainError('INVALID_INPUT', 'name не может быть пустым');
     }
 
-    logger.info('registerUser called', { telegramId, name });
+    const useCaseLogger = LoggerFactory.useCase('registerUser');
+    const correlationId = `register_${telegramId}_${Date.now()}`;
 
-    // Use new Application Service
-    return await gameApplicationService.registerUser({ telegramId, name });
+    useCaseLogger.info('registerUser', LOG_MESSAGES.USE_CASES.REGISTER_USER_PROCESSING,
+      { telegramId, name },
+      { correlationId }
+    );
+
+    try {
+      const result = await userApplicationService.registerUser({ telegramId, name });
+
+      useCaseLogger.info('registerUser', LOG_MESSAGES.USE_CASES.REGISTER_USER_COMPLETED,
+        { userId: result.userId, telegramId },
+        { correlationId, executionTimeMs: Date.now() - parseInt(correlationId.split('_')[2] || '0') }
+      );
+
+      return result;
+    } catch (error) {
+      useCaseLogger.error('registerUser', LOG_MESSAGES.USE_CASES.REGISTER_USER_FAILED,
+        error as Error,
+        { telegramId, name, error: (error as Error).message },
+        { correlationId }
+      );
+      throw error;
+    }
   }
 
   /**
@@ -312,7 +351,7 @@
     logger.info('updateUserLevel called', { userId, levelTag });
 
     // Use new Application Service
-    return await gameApplicationService.updateUserLevel({ userId, levelTag });
+    return await userApplicationService.updateUserLevel({ userId, levelTag });
   }
 
   /**

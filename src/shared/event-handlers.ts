@@ -84,7 +84,13 @@ async function handleGameReminder24h(event: TypedDomainEvent) {
     .map(reg => ({
       userId: reg.userId,
       chatId: reg.user.telegramId!,
-      message: `⏰ Напоминание: игра завтра ${formatGameTimeForNotification(game.startsAt, getUserTimezone(reg.userId))}!\n🏟️ ${getVenueName(game.venueId) || ''}\n💰 ${game.priceText || 'Бесплатно'}`,
+      message: `⏰ Напоминание: игра завтра ${
+        formatGameTimeForNotification(game.startsAt, getUserTimezone(reg.userId))
+      }!\n🏟️ ${
+        getVenueName(game.venueId) || ''
+      }\n💰 ${
+        game.priceText || 'Бесплатно'
+      }`,
       type: 'game-reminder-24h',
       gameId
     }));
@@ -127,7 +133,13 @@ async function handleGameReminder2h(event: TypedDomainEvent) {
     .map(reg => ({
       userId: reg.userId,
       chatId: reg.user.telegramId!,
-      message: `🚨 Через 2 часа игра!\n⏰ ${formatGameTimeForNotification(game.startsAt, getUserTimezone(reg.userId))}\n🏟️ ${getVenueName(game.venueId) || ''}\n💰 ${game.priceText || 'Бесплатно'}`,
+      message: `🚨 Через 2 часа игра!\n⏰ ${
+        formatGameTimeForNotification(game.startsAt, getUserTimezone(reg.userId))
+      }\n🏟️ ${
+        getVenueName(game.venueId) || ''
+      }\n💰 ${
+        game.priceText || 'Бесплатно'
+      }`,
       type: 'game-reminder-2h',
       gameId
     }));
@@ -553,7 +565,15 @@ async function handleGameCreatedWithPriorityWindow(event: TypedDomainEvent) {
   }
 
   const gameTime = formatGameTimeForNotification(game.startsAt);
-  const message = `🎾 Приоритетное приглашение!\n${gameTime}\n🏟️ ${game.levelTag || 'Общий уровень'}\n💰 ${game.priceText || 'По согласованию'}\n${getOrganizerName(game)}\n\n⏰ У вас есть 2 часа на ответ!`;
+  const message = `🎾 Приоритетное приглашение!\n${
+    gameTime
+  }\n🏟️ ${
+    game.levelTag || 'Общий уровень'
+  }\n💰 ${
+    game.priceText || 'По согласованию'
+  }\n${
+    getOrganizerName(game)
+  }\n\n⏰ У вас есть 2 часа на ответ!`;
 
   const notifications = confirmedPlayers
     .filter(player => player.telegramId)
@@ -678,7 +698,17 @@ async function handleGamePublishedForAll(event: TypedDomainEvent) {
   );
 
   const gameTime = formatGameTimeForNotification(game.startsAt);
-  const message = `🎾 Новая игра доступна!\n${gameTime}\n🏟️ ${game.levelTag || 'Общий уровень'}\n💰 ${game.priceText || 'По согласованию с организатором'}\n${getOrganizerName(game)}\nПрисоединиться: /join ${gameId}`;
+  const message = `🎾 Новая игра доступна!\n${
+    gameTime
+  }\n🏟️ ${
+    game.levelTag || 'Общий уровень'
+  }\n💰 ${
+    game.priceText || 'По согласованию с организатором'
+  }\n${
+    getOrganizerName(game)
+  }\nПрисоединиться: /join ${
+    gameId
+  }`;
 
   const notifications = filteredUsers
     .filter(user => {

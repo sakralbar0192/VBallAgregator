@@ -1,4 +1,4 @@
-import { GameRepo, RegistrationRepo } from '../../infrastructure/repositories.js';
+import { GameRepo, RegistrationRepo } from '../../infrastructure/repositories/index.js';
 import { DomainError } from '../errors.js';
 import { RegStatus } from '../registration.js';
 import { v4 as uuid } from 'uuid';

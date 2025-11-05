@@ -1,4 +1,4 @@
-import { GameRepo, RegistrationRepo } from '../../infrastructure/repositories.js';
+import { GameRepo, RegistrationRepo, OrganizerRepo, PrismaOrganizerRepo } from '../../infrastructure/repositories/index.js';
 import { EventBus } from '../../shared/event-bus.js';
 import { GameDomainService } from '../../domain/services/game-domain-service.js';
 import { SchedulerService } from '../../shared/scheduler-service.js';
@@ -38,6 +38,7 @@ export class GameApplicationService {
   constructor(
     private gameRepo: GameRepo,
     private registrationRepo: RegistrationRepo,
+    private organizerRepo: OrganizerRepo,
     private eventBus: EventBus,
     private gameDomainService: GameDomainService,
     private schedulerService: SchedulerService
@@ -140,7 +141,7 @@ export class GameApplicationService {
     );
 
     // Get organizer record to ensure it exists
-    const organizer = await (this.gameRepo as any).getOrganizerByUserId(command.organizerId);
+    const organizer = await this.organizerRepo.findByUserId(command.organizerId);
     if (!organizer) {
       serviceLogger.error('createGame', LOG_MESSAGES.SERVICES.GAME_SERVICE_ORGANIZER_NOT_FOUND,
         new DomainError('NOT_FOUND', 'Организатор не найден'),

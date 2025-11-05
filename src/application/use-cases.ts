@@ -1,7 +1,7 @@
   import { Game, GameStatus } from '../domain/game.js';
   import { RegStatus } from '../domain/registration.js';
-  import type { GameRepo, RegistrationRepo } from '../infrastructure/repositories.js';
-  import { PrismaGameRepo, PrismaRegistrationRepo, PrismaUserRepo } from '../infrastructure/repositories.js';
+  import type { GameRepo, RegistrationRepo } from '../infrastructure/repositories/index.js';
+  import { PrismaGameRepo, PrismaRegistrationRepo, PrismaUserRepo, PrismaOrganizerRepo } from '../infrastructure/repositories/index.js';
   import { LoggerFactory } from '../shared/layer-logger.js';
   import { LOG_MESSAGES } from '../shared/logging-messages.js';
   import { DomainError } from '../domain/errors.js';
@@ -23,9 +23,11 @@
   const eventBus = EventBus.getInstance();
   const gameDomainService = new GameDomainService(gameRepo, registrationRepo);
   const schedulerService = new SchedulerService(eventBus);
+  const organizerRepo = new PrismaOrganizerRepo();
   const gameApplicationService = new GameApplicationService(
     gameRepo,
     registrationRepo,
+    organizerRepo,
     eventBus,
     gameDomainService,
     schedulerService

@@ -1,4 +1,4 @@
-import { UserRepo } from '../../infrastructure/repositories.js';
+import { UserRepo } from '../../infrastructure/repositories/index.js';
 import { LoggerFactory } from '../../shared/layer-logger.js';
 import { LOG_MESSAGES } from '../../shared/logging-messages.js';
 

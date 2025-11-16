@@ -1,7 +1,5 @@
-import { prisma } from './prisma.js';
 import { SchedulerService } from '../shared/scheduler-service.js';
 import { config } from '../shared/config.js';
-import { logger } from '../shared/logger.js';
 
 export interface HealthStatus {
   status: 'healthy' | 'degraded' | 'unhealthy';
@@ -24,7 +22,6 @@ export class HealthCheckService {
   ) {}
 
   async checkHealth(): Promise<HealthStatus> {
-    const start = Date.now();
     const checks: Record<string, CheckResult> = {};
 
     // Параллельные проверки

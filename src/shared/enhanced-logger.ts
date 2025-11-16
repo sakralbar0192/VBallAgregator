@@ -316,7 +316,6 @@ export class EnhancedConsoleLogger implements Logger {
    */
   private sendToExternalService(entry: StructuredLog): void {
     // Заглушка для интеграции с внешним сервисом логирования
-    // Примеры: CloudWatch, Datadog, LogDNA, etc.
     console.log('Внешний сервис логирования получит:', entry);
   }
 }

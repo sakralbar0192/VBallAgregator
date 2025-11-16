@@ -126,7 +126,7 @@ bot.action(/^reject_player_(.+)$/, async (ctx) => {
   await PlayerManagementHandler.handleRejectPlayer(ctx, ctx.match[0]);
 });
 
-// Настройки
+// Настройки (в разработке)
 bot.action('toggle_global', SettingsHandler.handleToggleGlobal);
 bot.action('settings_payments', SettingsHandler.handleSettingsPayments);
 bot.action('settings_games', SettingsHandler.handleSettingsGames);

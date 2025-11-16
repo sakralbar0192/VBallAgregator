@@ -30,10 +30,11 @@ services:
 
   app:
     build: .
+    env_file: .env
     environment:
-      DATABASE_URL: "postgresql://user:password@db:5432/vball_db?schema=public"
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
     depends_on:
       db:

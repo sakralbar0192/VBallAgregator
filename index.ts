@@ -5,7 +5,8 @@ import { SchedulerService } from './src/shared/scheduler-service.js';
 import { EventBus } from './src/shared/event-bus.js';
 import { HealthCheckService } from './src/infrastructure/health.js';
 import { registerEventHandlers } from './src/shared/event-handlers.js';
-import { logger } from './src/shared/logger.js';
+import { enhancedLogger} from './src/shared/enhanced-logger.js';
+import { LOG_MESSAGES } from './src/shared/logging-messages.js';
 import { prisma } from './src/infrastructure/prisma.js';
 import { createClient } from 'redis';
 
@@ -13,10 +14,16 @@ async function startApp() {
   try {
     // 1. Валидация конфигурации
     validateConfig(config);
-    logger.info('Configuration validated');
+    enhancedLogger.info(LOG_MESSAGES.STARTUP.CONFIG_VALIDATED);
 
     // 2. Инициализация сервисов
-    const redisClient = createClient(config.redis);
+    const redisClient = createClient({
+      socket: {
+        host: config.redis.host,
+        port: config.redis.port,
+      },
+      password: config.redis.password,
+    });
     await redisClient.connect();
 
     const eventBus = EventBus.getInstance();
@@ -29,61 +36,61 @@ async function startApp() {
 
     // 3. Настройка обработчиков событий
     await registerEventHandlers(eventBus);
-    logger.info('Event handlers registered');
+    enhancedLogger.info(LOG_MESSAGES.STARTUP.EVENT_HANDLERS_REGISTERED);
 
     // 4. Инициализация workers
     schedulerService.initializeWorkers();
-    logger.info('Queue workers initialized');
+    enhancedLogger.info(LOG_MESSAGES.STARTUP.QUEUE_WORKERS_INITIALIZED);
 
     // 5. Проверка здоровья системы
     const health = await healthService.checkHealth();
     if (health.status === 'unhealthy') {
       throw new Error(`System unhealthy: ${JSON.stringify(health.checks)}`);
     }
-    logger.info('Health check passed', { status: health.status });
+    enhancedLogger.info(LOG_MESSAGES.STARTUP.HEALTH_CHECK_PASSED, { status: health.status });
 
     // 6. Запуск бота
     await bot.launch();
-    logger.info('Bot started successfully');
+    enhancedLogger.info(LOG_MESSAGES.STARTUP.BOT_STARTED_SUCCESSFULLY);
 
     // 7. Настройка graceful shutdown
     setupGracefulShutdown(schedulerService, redisClient);
 
   } catch (error) {
-    logger.error('Failed to start application', { error: error instanceof Error ? error.message : error });
+    enhancedLogger.error(LOG_MESSAGES.STARTUP.FAILED_TO_START_APPLICATION, { error: error instanceof Error ? error.message : error });
     process.exit(1);
   }
 }
 
 function setupGracefulShutdown(schedulerService: SchedulerService, redisClient: any) {
   const gracefulShutdown = async (signal: string) => {
-    logger.info('Graceful shutdown initiated', { signal });
+    enhancedLogger.info(LOG_MESSAGES.STARTUP.GRACEFUL_SHUTDOWN_INITIATED, { signal });
 
     try {
       // 1. Остановка приема новых запросов
       bot.stop(signal);
-      logger.info('Bot stopped');
+      enhancedLogger.info(LOG_MESSAGES.STARTUP.BOT_STOPPED);
 
       // 2. Завершение текущих задач (timeout 30 секунд)
       await Promise.race([
         schedulerService.close(),
         new Promise(resolve => setTimeout(resolve, 30000)),
       ]);
-      logger.info('Scheduler closed');
+      enhancedLogger.info(LOG_MESSAGES.STARTUP.SCHEDULER_CLOSED);
 
       // 3. Закрытие Redis соединения
       await redisClient.disconnect();
-      logger.info('Redis disconnected');
+      enhancedLogger.info(LOG_MESSAGES.STARTUP.REDIS_DISCONNECTED);
 
       // 4. Закрытие БД соединений
       await prisma.$disconnect();
-      logger.info('Database disconnected');
+      enhancedLogger.info(LOG_MESSAGES.STARTUP.DATABASE_DISCONNECTED);
 
-      logger.info('Graceful shutdown completed');
+      enhancedLogger.info(LOG_MESSAGES.STARTUP.GRACEFUL_SHUTDOWN_COMPLETED);
       process.exit(0);
 
     } catch (error) {
-      logger.error('Error during graceful shutdown', { error: error instanceof Error ? error.message : error });
+      enhancedLogger.error(LOG_MESSAGES.STARTUP.ERROR_DURING_GRACEFUL_SHUTDOWN, { error: error instanceof Error ? error.message : error });
       process.exit(1);
     }
   };
@@ -94,6 +101,6 @@ function setupGracefulShutdown(schedulerService: SchedulerService, redisClient: 
 }
 
 startApp().catch(error => {
-  logger.error('Unhandled error during startup', { error: error instanceof Error ? error.message : error });
+  enhancedLogger.error(LOG_MESSAGES.STARTUP.UNHANDLED_ERROR_DURING_STARTUP, { error: error instanceof Error ? error.message : error });
   process.exit(1);
 });

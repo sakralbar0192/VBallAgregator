@@ -24,6 +24,24 @@ export const LOG_MESSAGES = {
     REGISTER_ORGANIZER_FAILED: 'Регистрация организатора не удалась',
   },
 
+  // Application Layer - Startup/Shutdown
+  STARTUP: {
+    CONFIG_VALIDATED: 'Конфигурация валидирована',
+    EVENT_HANDLERS_REGISTERED: 'Обработчики событий зарегистрированы',
+    QUEUE_WORKERS_INITIALIZED: 'Workers очереди инициализированы',
+    HEALTH_CHECK_PASSED: 'Проверка здоровья системы пройдена',
+    BOT_STARTED_SUCCESSFULLY: 'Бот успешно запущен',
+    GRACEFUL_SHUTDOWN_INITIATED: 'Graceful shutdown инициирован',
+    BOT_STOPPED: 'Бот остановлен',
+    SCHEDULER_CLOSED: 'Scheduler закрыт',
+    REDIS_DISCONNECTED: 'Redis отключен',
+    DATABASE_DISCONNECTED: 'База данных отключена',
+    GRACEFUL_SHUTDOWN_COMPLETED: 'Graceful shutdown завершен',
+    FAILED_TO_START_APPLICATION: 'Не удалось запустить приложение',
+    ERROR_DURING_GRACEFUL_SHUTDOWN: 'Ошибка во время graceful shutdown',
+    UNHANDLED_ERROR_DURING_STARTUP: 'Необработанная ошибка при запуске',
+  },
+
   // Application Services
   SERVICES: {
     USER_SERVICE_INVOKE_REPO: 'Вызов операции репозитория пользователей',
@@ -121,6 +139,7 @@ export const LOG_MESSAGES = {
  */
 export type LogMessageKey = keyof typeof LOG_MESSAGES;
 export type BotLogKey = keyof typeof LOG_MESSAGES.BOT;
+export type StartupLogKey = keyof typeof LOG_MESSAGES.STARTUP;
 export type UseCaseLogKey = keyof typeof LOG_MESSAGES.USE_CASES;
 export type ServiceLogKey = keyof typeof LOG_MESSAGES.SERVICES;
 export type RepositoryLogKey = keyof typeof LOG_MESSAGES.REPOSITORIES;

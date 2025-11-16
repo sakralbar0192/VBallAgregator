@@ -1,7 +1,7 @@
   import { Game, GameStatus } from '../domain/game.js';
   import { RegStatus } from '../domain/registration.js';
   import type { GameRepo, RegistrationRepo } from '../infrastructure/repositories/index.js';
-  import { PrismaGameRepo, PrismaRegistrationRepo, PrismaUserRepo, PrismaOrganizerRepo } from '../infrastructure/repositories/index.js';
+  import { PrismaGameRepo, PrismaRegistrationRepo } from '../infrastructure/repositories/index.js';
   import { LoggerFactory } from '../shared/layer-logger.js';
   import { LOG_MESSAGES } from '../shared/logging-messages.js';
   import { BusinessRuleError } from '../domain/errors/business-rule-error.js';
@@ -9,30 +9,20 @@
   import { ValidationError } from '../domain/errors/validation-error.js';
   import { GameAlreadyStartedError } from '../domain/errors/game-errors.js';
   import { prisma } from '../infrastructure/prisma.js';
-  import { GameApplicationService } from './services/game-service.js';
-  import { UserApplicationService } from './services/user-service.js';
-  import { EventBus } from '../shared/event-bus.js';
-  import { GameDomainService } from '../domain/services/game-domain-service.js';
-  import { SchedulerService } from '../shared/scheduler-service.js';
+  import { ApplicationServiceFactory } from './services/application-service-factory.js';
+  import { OrganizerApplicationService } from './services/organizer-service.js';
+  import { InvitationApplicationService } from './services/invitation-service.js';
 
-  const gameRepo: GameRepo = new PrismaGameRepo();
-  const registrationRepo: RegistrationRepo = new PrismaRegistrationRepo();
-  const userRepo = new PrismaUserRepo();
-
-  // Initialize new services
-  const eventBus = EventBus.getInstance();
-  const gameDomainService = new GameDomainService(gameRepo, registrationRepo);
-  const schedulerService = new SchedulerService(eventBus);
-  const organizerRepo = new PrismaOrganizerRepo();
-  const gameApplicationService = new GameApplicationService(
-    gameRepo,
-    registrationRepo,
-    organizerRepo,
-    eventBus,
-    gameDomainService,
-    schedulerService
-  );
-  const userApplicationService = new UserApplicationService(userRepo);
+  // Инициализируем фабрику сервисов
+  const serviceFactory = ApplicationServiceFactory.getInstance();
+  const gameApplicationService = serviceFactory.getGameApplicationService();
+  const userApplicationService = serviceFactory.getUserApplicationService();
+  const gameRepo: GameRepo = serviceFactory.getGameRepo();
+  const registrationRepo: RegistrationRepo = serviceFactory.getRegistrationRepo();
+  const eventBus = serviceFactory.getEventBus();
+  const schedulerService = serviceFactory.getSchedulerService();
+  const organizerApplicationService = new OrganizerApplicationService(eventBus);
+  const invitationApplicationService = new InvitationApplicationService(eventBus);
 
   /**
    * Позволяет пользователю присоединиться к игре.
@@ -70,10 +60,42 @@
       throw new GameAlreadyStartedError(gameId, game.startsAt);
     }
 
-    // Если игра создана недавно (в течение последних 2 часов), проверить, является ли пользователь подтвержденным игроком организатора
+    // Если игра создана недавно (в течение последних 2 часов), проверить статус ответов приоритетных игроков
     // Но только если пользователь не является организатором игры
     const gameAge = Date.now() - game.createdAt.getTime();
-    const isInPriorityWindow = game.status === 'open' && gameAge < 2 * 60 * 60 * 1000;
+    let isInPriorityWindow = game.status === 'open' && gameAge < 2 * 60 * 60 * 1000;
+
+    if (isInPriorityWindow) {
+      // Получить подтвержденных игроков организатора
+      const confirmedPlayers = await (prisma as any).playerOrganizer.findMany({
+        where: {
+          organizerId: game.organizerId,
+          status: 'confirmed'
+        },
+        select: { playerId: true }
+      });
+
+      if (confirmedPlayers.length > 0) {
+        // Получить ответы приоритетных игроков
+        const responses = await (prisma as any).gamePlayerResponse.findMany({
+          where: {
+            gameId,
+            playerId: { in: confirmedPlayers.map((p: any) => p.playerId) }
+          },
+          select: { response: true }
+        });
+
+        // Проверить, все ли приоритетные игроки ответили (не 'ignored')
+        const allResponded = responses.length === confirmedPlayers.length &&
+          responses.every((r: any) => r.response !== 'ignored');
+
+        // Если все ответили, приоритетное окно закрыто
+        isInPriorityWindow = !allResponded;
+      } else {
+        // Нет приоритетных игроков - окно не активно
+        isInPriorityWindow = false;
+      }
+    }
 
     if (isInPriorityWindow) {
       // Проверить, является ли пользователь организатором игры
@@ -573,9 +595,6 @@
    * @returns {Promise<{ ok: boolean }>} - Успех операции.
    */
   export async function selectOrganizers(playerId: string, organizerIds: string[]): Promise<{ ok: boolean; }> {
-    // Валидация входных данных
-    InputValidator.validateRequired(playerId, 'playerId');
-
     const useCaseLogger = LoggerFactory.useCase('selectOrganizers');
     const correlationId = `select_orgs_${playerId}_${Date.now()}`;
 
@@ -584,61 +603,14 @@
       { correlationId }
     );
 
-    // Проверить существование игрока
-    const player = await prisma.user.findUnique({ where: { id: playerId } });
-    if (!player) throw new BusinessRuleError('NOT_FOUND', 'Игрок не найден');
-
-    // Если массив пустой, удалить все существующие связи
-    if (!organizerIds?.length) {
-      await (prisma as any).playerOrganizer.deleteMany({
-        where: { playerId }
-      });
-      useCaseLogger.info('selectOrganizers', 'Все связи с организаторами удалены',
-        { playerId },
-        { correlationId, executionTimeMs: Date.now() - parseInt(correlationId.split('_')[2] || '0') }
-      );
-      return { ok: true };
-    }
-
-    // Проверить существование организаторов
-    const organizers = await prisma.organizer.findMany({
-      where: { id: { in: organizerIds } }
-    });
-    if (organizers.length !== organizerIds.length) {
-      throw new BusinessRuleError('NOT_FOUND', 'Один или несколько организаторов не найдены');
-    }
-
-    // Удалить существующие связи и создать новые со статусом pending
-    await prisma.$transaction(async (tx: any) => {
-      // Удалить все существующие связи игрока
-      await tx.playerOrganizer.deleteMany({
-        where: { playerId }
-      });
-
-      // Создать новые связи со статусом pending
-      const playerOrganizers = organizerIds.map(organizerId => ({
-        playerId,
-        organizerId,
-        status: 'pending' as const,
-      }));
-
-      await tx.playerOrganizer.createMany({
-        data: playerOrganizers
-      });
-    });
+    const result = await organizerApplicationService.selectOrganizers(playerId, organizerIds);
 
     useCaseLogger.info('selectOrganizers', 'Организаторы выбраны',
       { playerId, organizerIds },
       { correlationId, executionTimeMs: Date.now() - parseInt(correlationId.split('_')[2] || '0') }
     );
-    await eventBus.publish({
-      type: 'PlayerSelectedOrganizers',
-      occurredAt: new Date(),
-      id: '',
-      payload: { playerId, organizerIds }
-    });
 
-    return { ok: true };
+    return result;
   }
 
   /**
@@ -648,10 +620,6 @@
    * @returns {Promise<{ ok: boolean }>} - Успех операции.
    */
   export async function confirmPlayer(organizerId: string, playerId: string) {
-    // Валидация входных данных
-    InputValidator.validateRequired(organizerId, 'organizerId');
-    InputValidator.validateRequired(playerId, 'playerId');
-
     const useCaseLogger = LoggerFactory.useCase('confirmPlayer');
     const correlationId = `confirm_player_${organizerId}_${playerId}_${Date.now()}`;
 
@@ -660,41 +628,14 @@
       { correlationId }
     );
 
-    // Проверить существование связи со статусом pending
-    const playerOrganizer = await (prisma as any).playerOrganizer.findUnique({
-      where: { playerId_organizerId: { playerId, organizerId } }
-    });
-    if (!playerOrganizer) {
-      throw new BusinessRuleError('NOT_FOUND', 'Связь между игроком и организатором не найдена');
-    }
-    if (playerOrganizer.status !== 'pending') {
-      throw new BusinessRuleError('INVALID_STATE', 'Игрок уже подтвержден или отклонен');
-    }
-
-    // Обновить статус на confirmed
-    await (prisma as any).playerOrganizer.update({
-      where: { playerId_organizerId: { playerId, organizerId } },
-      data: { status: 'confirmed', confirmedAt: new Date() }
-    });
-
-    // Получить имя игрока для события
-    const player = await prisma.user.findUnique({
-      where: { id: playerId },
-      select: { name: true }
-    });
+    const result = await organizerApplicationService.confirmPlayer(organizerId, playerId);
 
     useCaseLogger.info('confirmPlayer', 'Игрок подтвержден',
       { organizerId, playerId },
       { correlationId, executionTimeMs: Date.now() - parseInt(correlationId.split('_')[3] || '0') }
     );
-    await eventBus.publish({
-      type: 'PlayerConfirmedByOrganizer',
-      occurredAt: new Date(),
-      id: '',
-      payload: { organizerId, playerId, playerName: player?.name || 'Unknown' }
-    });
 
-    return { ok: true };
+    return result;
   }
 
   /**
@@ -704,10 +645,6 @@
    * @returns {Promise<{ ok: boolean }>} - Успех операции.
    */
   export async function rejectPlayer(organizerId: string, playerId: string): Promise<{ ok: boolean; }> {
-    // Валидация входных данных
-    InputValidator.validateRequired(organizerId, 'organizerId');
-    InputValidator.validateRequired(playerId, 'playerId');
-
     const useCaseLogger = LoggerFactory.useCase('rejectPlayer');
     const correlationId = `reject_player_${organizerId}_${playerId}_${Date.now()}`;
 
@@ -716,38 +653,14 @@
       { correlationId }
     );
 
-    // Обновить статус на rejected
-    const result = await (prisma as any).playerOrganizer.updateMany({
-      where: {
-        playerId,
-        organizerId,
-        status: 'pending'
-      },
-      data: { status: 'rejected' }
-    });
-
-    if (result.count === 0) {
-      throw new BusinessRuleError('NOT_FOUND', 'Связь между игроком и организатором не найдена или уже обработана');
-    }
-
-    // Получить имя игрока для события
-    const player = await prisma.user.findUnique({
-      where: { id: playerId },
-      select: { name: true }
-    });
+    const result = await organizerApplicationService.rejectPlayer(organizerId, playerId);
 
     useCaseLogger.info('rejectPlayer', 'Игрок отклонен',
       { organizerId, playerId },
       { correlationId, executionTimeMs: Date.now() - parseInt(correlationId.split('_')[3] || '0') }
     );
-    await eventBus.publish({
-      type: 'PlayerRejectedByOrganizer',
-      occurredAt: new Date(),
-      id: '',
-      payload: { organizerId, playerId, playerName: player?.name || 'Unknown' }
-    });
 
-    return { ok: true };
+    return result;
   }
 
   /**
@@ -757,9 +670,6 @@
    * @returns {Promise<Array>} - Список игроков.
    */
   export async function getOrganizerPlayers(organizerId: string, status?: string) {
-    // Валидация входных данных
-    InputValidator.validateRequired(organizerId, 'organizerId');
-
     const useCaseLogger = LoggerFactory.useCase('getOrganizerPlayers');
     const correlationId = `get_org_players_${organizerId}_${Date.now()}`;
 
@@ -768,34 +678,14 @@
       { correlationId }
     );
 
-    const where: any = { organizerId };
-    if (status) {
-      where.status = status;
-    }
-
-    const playerOrganizers = await (prisma as any).playerOrganizer.findMany({
-      where,
-      include: {
-        player: {
-          select: { id: true, name: true, levelTag: true }
-        }
-      },
-      orderBy: { requestedAt: 'desc' }
-    });
+    const result = await organizerApplicationService.getOrganizerPlayers(organizerId, status);
 
     useCaseLogger.info('getOrganizerPlayers', 'Игроки организатора получены',
-      { organizerId, count: playerOrganizers.length },
+      { organizerId, count: result.length },
       { correlationId, executionTimeMs: Date.now() - parseInt(correlationId.split('_')[2] || '0') }
     );
 
-    return playerOrganizers.map((po: any) => ({
-      playerId: po.player.id,
-      playerName: po.player.name,
-      levelTag: po.player.levelTag,
-      status: po.status,
-      requestedAt: po.requestedAt,
-      confirmedAt: po.confirmedAt
-    }));
+    return result;
   }
 
    /**
@@ -888,11 +778,6 @@
    * @returns {Promise<{ ok: boolean }>} - Успех операции.
    */
   export async function respondToGameInvitation(gameId: string, playerId: string, response: string) {
-    // Валидация входных данных
-    InputValidator.validateRequired(gameId, 'gameId');
-    InputValidator.validateRequired(playerId, 'playerId');
-    InputValidator.validateEnum(response, 'response', ['yes', 'no', 'ignored']);
-
     const useCaseLogger = LoggerFactory.useCase('respondToGameInvitation');
     const correlationId = `respond_invitation_${gameId}_${playerId}_${Date.now()}`;
 
@@ -901,59 +786,14 @@
       { correlationId }
     );
 
-    // Проверить, что игрок — подтвержденный игрок организатора игры
-    const game = await prisma.game.findUnique({
-      where: { id: gameId },
-      select: { organizerId: true, createdAt: true }
-    });
-    if (!game) {
-      throw new BusinessRuleError('NOT_FOUND', 'Игра не найдена');
-    }
-
-    const isConfirmedPlayer = await (prisma as any).playerOrganizer.findFirst({
-      where: {
-        playerId,
-        organizerId: game.organizerId,
-        status: 'confirmed'
-      }
-    });
-
-    if (!isConfirmedPlayer) {
-      throw new BusinessRuleError('FORBIDDEN', 'Только подтвержденные игроки организатора могут отвечать на приглашения');
-    }
-
-    // Обновить или создать запись GamePlayerResponse
-    await (prisma as any).gamePlayerResponse.upsert({
-      where: {
-        gameId_playerId: { gameId, playerId }
-      },
-      update: {
-        response: response as any,
-        respondedAt: response !== 'ignored' ? new Date() : null
-      },
-      create: {
-        gameId,
-        playerId,
-        response: response as any,
-        respondedAt: response !== 'ignored' ? new Date() : null
-      }
-    });
+    const result = await invitationApplicationService.respondToGameInvitation(gameId, playerId, response);
 
     useCaseLogger.info('respondToGameInvitation', 'Игрок ответил на приглашение к игре',
       { gameId, playerId, response },
       { correlationId, executionTimeMs: Date.now() - parseInt(correlationId.split('_')[3] || '0') }
     );
-    await eventBus.publish({
-      type: 'PlayerRespondedToGameInvitation',
-      occurredAt: new Date(),
-      id: '',
-      payload: { gameId, playerId, response }
-    });
 
-    // Проверить, все ли приоритетные игроки ответили
-    await checkIfAllPriorityPlayersResponded(gameId);
-
-    return { ok: true };
+    return result;
   }
 
   /**
@@ -1034,9 +874,6 @@
    * @returns {Promise<void>} - Успех операции.
    */
   export async function checkPriorityWindowExpiration(gameId: string) {
-    // Валидация входных данных
-    InputValidator.validateRequired(gameId, 'gameId');
-
     const useCaseLogger = LoggerFactory.useCase('checkPriorityWindowExpiration');
     const correlationId = `check_expiration_${gameId}_${Date.now()}`;
 
@@ -1045,40 +882,12 @@
       { correlationId }
     );
 
-    const game = await prisma.game.findUnique({
-      where: { id: gameId },
-      select: { status: true, createdAt: true }
-    });
+    await invitationApplicationService.checkPriorityWindowExpiration(gameId);
 
-    if (!game || game.status !== 'open') {
-      useCaseLogger.info('checkPriorityWindowExpiration', 'Игра не найдена или не открыта',
-        { gameId },
-        { correlationId }
-      );
-      return;
-    }
-
-    // Проверить, истекло ли приоритетное окно (2 часа после создания)
-    const priorityWindowClosesAt = new Date(game.createdAt.getTime() + 2 * 60 * 60 * 1000);
-    if (priorityWindowClosesAt > new Date()) {
-      useCaseLogger.info('checkPriorityWindowExpiration', 'Приоритетное окно еще не истекло',
-        { gameId, closesAt: priorityWindowClosesAt },
-        { correlationId }
-      );
-      return;
-    }
-
-    // Приоритетное окно истекло — публикуем игру для всех
-    useCaseLogger.info('checkPriorityWindowExpiration', 'Приоритетное окно истекло, открываем игру для всех игроков',
+    useCaseLogger.info('checkPriorityWindowExpiration', 'Приоритетное окно проверено',
       { gameId },
       { correlationId, executionTimeMs: Date.now() - parseInt(correlationId.split('_')[2] || '0') }
     );
-    await eventBus.publish({
-      type: 'GamePublishedForAll',
-      occurredAt: new Date(),
-      id: '',
-      payload: { gameId }
-    });
   }
 
   /**
@@ -1088,10 +897,6 @@
    * @returns {Promise<{ ok: boolean }>} - Успех операции.
    */
   export async function linkPlayerToOrganizer(playerId: string, organizerId: string) {
-    // Валидация входных данных
-    InputValidator.validateRequired(playerId, 'playerId');
-    InputValidator.validateRequired(organizerId, 'organizerId');
-
     const useCaseLogger = LoggerFactory.useCase('linkPlayerToOrganizer');
     const correlationId = `link_player_${playerId}_${organizerId}_${Date.now()}`;
 
@@ -1100,29 +905,12 @@
       { correlationId }
     );
 
-    // Проверить существование игрока и организатора
-    const player = await prisma.user.findUnique({ where: { id: playerId } });
-    if (!player) throw new BusinessRuleError('NOT_FOUND', 'Игрок не найден');
+    const result = await organizerApplicationService.linkPlayerToOrganizer(playerId, organizerId);
 
-    const organizer = await prisma.organizer.findUnique({ where: { id: organizerId } });
-    if (!organizer) throw new BusinessRuleError('NOT_FOUND', 'Организатор не найден');
-
-    // Здесь можно добавить логику создания связи, если нужна таблица
-    // Пока просто публикуем событие для уведомления
     useCaseLogger.info('linkPlayerToOrganizer', 'Игрок привязан к организатору',
-      { playerId, organizerId, playerName: player.name },
+      { playerId, organizerId },
       { correlationId, executionTimeMs: Date.now() - parseInt(correlationId.split('_')[3] || '0') }
     );
-    await eventBus.publish({
-      type: 'PlayerLinkedToOrganizer',
-      occurredAt: new Date(),
-      id: '',
-      payload: {
-        playerId,
-        organizerId,
-        playerName: player.name
-      }
-    });
 
-    return { ok: true };
+    return result;
   }

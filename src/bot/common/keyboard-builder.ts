@@ -138,6 +138,76 @@ export class KeyboardBuilder {
   }
 
   /**
+   * Создать главную палитру команд
+   */
+  static createMainCommandPalette(userInfo: {
+    isOrganizer: boolean;
+    hasPlayerRegistrations: boolean;
+  }): InlineKeyboardButton[][] {
+    const buttons: InlineKeyboardButton[][] = [];
+
+    // Первый ряд - основные действия
+    buttons.push([
+      { text: '🎾 Найти игры', callback_data: 'cmd_games' },
+      { text: '📋 Мои игры', callback_data: 'cmd_my' }
+    ]);
+
+    // Второй ряд - действия по ролям
+    if (userInfo.hasPlayerRegistrations) {
+      buttons.push([
+        { text: '⚙️ Настройки', callback_data: 'cmd_settings' },
+        { text: '👥 Мои организаторы', callback_data: 'cmd_myorganizers' }
+      ]);
+    }
+
+    // Третий ряд - для организаторов
+    if (userInfo.isOrganizer) {
+      buttons.push([
+        { text: '➕ Создать игру', callback_data: 'cmd_newgame' },
+        { text: '👑 Мои игроки', callback_data: 'cmd_myplayers' }
+      ]);
+    }
+
+    // Четвертый ряд - общие действия
+    buttons.push([
+      { text: '❓ Помощь', callback_data: 'cmd_help' }
+    ]);
+
+    return buttons;
+  }
+
+  /**
+   * Создать компактную палитру для быстрого доступа
+   */
+  static createQuickCommandPalette(userInfo: {
+    isOrganizer: boolean;
+    hasPlayerRegistrations: boolean;
+  }): InlineKeyboardButton[][] {
+    const buttons: InlineKeyboardButton[][] = [];
+
+    // Основные действия в один ряд
+    const mainButtons = [
+      { text: '🎾 Игры', callback_data: 'cmd_games' },
+      { text: '📋 Мои', callback_data: 'cmd_my' }
+    ];
+
+    if (userInfo.isOrganizer) {
+      mainButtons.push({ text: '➕ Создать', callback_data: 'cmd_newgame' });
+    }
+
+    if (userInfo.hasPlayerRegistrations) {
+      mainButtons.push({ text: '⚙️ Настройки', callback_data: 'cmd_settings' });
+    }
+
+    // Разбиваем на ряды по 2 кнопки
+    for (let i = 0; i < mainButtons.length; i += 2) {
+      buttons.push(mainButtons.slice(i, i + 2));
+    }
+
+    return buttons;
+  }
+
+  /**
    * Создать клавиатуру для ответа на приглашение
    */
   static createInvitationResponseKeyboard(gameId: string): InlineKeyboardButton[][] {

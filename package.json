@@ -10,7 +10,7 @@
     "start": "node dist/index.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "cross-env-shell \"DATABASE_URL=$DATABASE_URL\" prisma studio",
+    "prisma:studio": "cross-env-shell \"DATABASE_URL=postgresql://user:password@localhost:5434/vball_dev\" prisma studio",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest",

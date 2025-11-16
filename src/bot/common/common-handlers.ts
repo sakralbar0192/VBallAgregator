@@ -3,6 +3,8 @@ import { BaseHandler } from './base-handler.js';
 import { LoggerFactory } from '../../shared/layer-logger.js';
 import { CommandHandlers } from '../command-handlers.js';
 import { ValidationError, BusinessRuleError, SystemError } from '../../domain/errors/index.js';
+import { KeyboardBuilder } from './keyboard-builder.js';
+import { prisma } from '../../infrastructure/prisma.js';
 
 /**
  * Общие обработчики (help, неизвестные команды, ошибки)
@@ -19,12 +21,91 @@ export class CommonHandlers extends BaseHandler {
   }
 
   /**
+   * Обработчик команды /menu
+   * Показывает палитру основных команд
+   */
+  static async handleMenu(ctx: Context): Promise<void> {
+    const telegramId = ctx.from!.id;
+
+    const user = await prisma.user.findUnique({ where: { telegramId } });
+    if (!user) {
+      await ctx.reply('Сначала зарегистрируйся командой /start');
+      return;
+    }
+
+    const isOrganizer = await prisma.organizer.findUnique({ where: { userId: user.id } });
+    const hasPlayerRegistrations = user.levelTag !== null;
+
+    const userInfo = {
+      isOrganizer: !!isOrganizer,
+      hasPlayerRegistrations
+    };
+
+    const buttons = KeyboardBuilder.createMainCommandPalette(userInfo);
+
+    await ctx.reply(
+      '🎾 *Палитра команд*\n\nВыбери нужное действие:',
+      {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: buttons }
+      }
+    );
+  }
+
+  /**
+   * Обработчик callback'ов от палитры команд
+   */
+  static async handleCommandPaletteCallback(ctx: any): Promise<void> {
+    const callbackData = ctx.match?.[0];
+    if (!callbackData) {
+      await ctx.answerCbQuery('Ошибка обработки команды');
+      return;
+    }
+    
+    try {
+      switch (callbackData) {
+        case 'cmd_games':
+          await CommandHandlers.handleGames(ctx);
+          break;
+        case 'cmd_my':
+          await CommandHandlers.handleMy(ctx);
+          break;
+        case 'cmd_settings':
+          await CommandHandlers.handleSettings(ctx);
+          break;
+        case 'cmd_myorganizers':
+          await CommandHandlers.handleMyOrganizers(ctx);
+          break;
+        case 'cmd_newgame':
+          const { GameCreationWizard } = await import('../game-creation-wizard.js');
+          await GameCreationWizard.start(ctx);
+          break;
+        case 'cmd_myplayers':
+          await CommandHandlers.handleMyPlayers(ctx);
+          break;
+        case 'cmd_help':
+          await CommandHandlers.handleHelp(ctx);
+          break;
+        default:
+          await ctx.answerCbQuery('Неизвестная команда');
+          return;
+      }
+
+      // Подтверждаем callback
+      await ctx.answerCbQuery('✅ Выполнено');
+    } catch (error) {
+      this.logger.error('handleCommandPaletteCallback', 'Error handling command palette callback', error as Error, { callbackData });
+      await ctx.answerCbQuery('❌ Ошибка выполнения команды');
+    }
+  }
+
+  /**
    * Обработчик неизвестных команд
    */
   static async handleUnknownCommand(ctx: Context): Promise<void> {
     // Обработка неизвестных команд
     if (ctx.message && 'text' in ctx.message && ctx.message.text?.startsWith('/')) {
-      await ctx.reply('Неизвестная команда. Используй /help для просмотра доступных команд.');
+      await ctx.reply('Неизвестная команда. Используй /help для просмотра доступных команд или /menu для быстрого доступа к командам.');
     }
   }
 

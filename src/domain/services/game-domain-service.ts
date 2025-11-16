@@ -45,19 +45,32 @@ export class GameDomainService {
     }
 
     if (existing && existing.status === RegStatus.waitlisted) {
-      return { status: existing.status };
+      return { status: existing.status, isReactivation: false };
     }
 
-    // Если canceled или не существует, создаем новую регистрацию
+    // Если canceled или не существует, создаем/обновляем регистрацию
     const status = confirmedCount < game.capacity ? RegStatus.confirmed : RegStatus.waitlisted;
 
     if (status === RegStatus.confirmed) {
       game.ensureCanJoin(confirmedCount);
     }
 
-    const registration = new Registration(uuid(), gameId, userId, status);
+    let isReactivation = false;
+    let registration: Registration;
+
+    if (existing && existing.status === RegStatus.canceled) {
+      // Повторная регистрация после отмены - обновляем существующую
+      existing.reactivate(status);
+      registration = existing;
+      isReactivation = true;
+    } else {
+      // Новая регистрация
+      registration = new Registration(uuid(), gameId, userId, status);
+      isReactivation = false;
+    }
+
     await this.registrationRepo.upsert(registration);
 
-    return { status };
+    return { status, isReactivation };
   }
 }

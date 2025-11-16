@@ -1,5 +1,5 @@
 import { AbstractDomainError } from './abstract-domain-error.js';
-
+import { ErrorHandler } from '../../shared/error-handler.js';
 export class BusinessRuleError extends AbstractDomainError {
   constructor(code: string, message: string, context: Record<string, any> = {}) {
     super(message, code, context);
@@ -7,7 +7,6 @@ export class BusinessRuleError extends AbstractDomainError {
 
   getUserMessage(): string {
     // Используем ErrorHandler для маппинга сообщений
-    const { ErrorHandler } = require('../../shared/error-handler.js');
     return ErrorHandler.mapToUserMessage(this);
   }
 

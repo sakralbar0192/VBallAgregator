@@ -90,7 +90,7 @@ export class GameApplicationService {
    * @returns Статус записи ('registered' или 'waitlisted')
    * @throws DomainError если игра не найдена или заполнена
    */
-  async joinGame(command: JoinGameCommand): Promise<{ status: RegStatus }> {
+  async joinGame(command: JoinGameCommand): Promise<{ status: RegStatus; isReactivation?: boolean }> {
     return await this.gameRepo.transaction(async () => {
       const result = await this.gameDomainService.processJoinGame(
         command.gameId,
@@ -99,15 +99,19 @@ export class GameApplicationService {
 
       metrics.registrationsProcessed.increment();
 
-      await this.eventBus.publish({
-        type: 'PlayerJoined',
-        payload: {
-          gameId: command.gameId,
-          userId: command.userId,
-          status: result.status
-        },
-        occurredAt: new Date(),
-      });
+      // Публикуем событие только если это новая регистрация или повторная после отмены
+      // (не для случая, когда игрок уже в листе ожидания)
+      if (result.isReactivation !== false) {
+        await this.eventBus.publish({
+          type: 'PlayerJoined',
+          payload: {
+            gameId: command.gameId,
+            userId: command.userId,
+            status: result.status
+          },
+          occurredAt: new Date(),
+        });
+      }
 
       return result;
     });

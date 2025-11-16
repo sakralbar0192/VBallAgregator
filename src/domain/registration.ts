@@ -36,4 +36,8 @@ export class Registration {
   }
 
   cancel() { this._status = RegStatus.canceled; }
+
+  reactivate(newStatus: RegStatus) {
+    this._status = newStatus;
+  }
 }

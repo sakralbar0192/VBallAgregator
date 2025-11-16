@@ -2,8 +2,6 @@ import { Context } from 'telegraf';
 import { BaseHandler } from '../common/base-handler.js';
 import { LoggerFactory } from '../../shared/layer-logger.js';
 import { CommandHandlers } from '../command-handlers.js';
-import { KeyboardBuilder } from '../common/keyboard-builder.js';
-import { prisma } from '../../infrastructure/prisma.js';
 
 /**
  * Обработчик настроек пользователя

@@ -6,6 +6,8 @@ import { formatGameTimeForNotification, formatDateForButton } from '../shared/da
 import { ErrorHandler } from '../shared/error-handler.js';
 import { userPreferencesService } from '../shared/user-preferences-service.js';
 import { getVenueName, getRegistrationStatusName, getPaymentStatusName, getGameStatusName, getOrganizerName, getLevelName } from '../shared/game-constants.js';
+import { KeyboardBuilder } from './common/keyboard-builder.js';
+import { InlineKeyboardButton } from 'telegraf/types';
 
 const GameIdSchema = z.string().uuid();
 
@@ -70,9 +72,9 @@ export class CommandHandlers {
   static async handleGames(ctx: Context): Promise<void> {
     const user = await prisma.user.findUnique({ where: { telegramId: ctx.from!.id } });
     const userId = user?.id;
-    const games = await listGames(userId);
+    const allGames = await listGames(userId);
 
-    if (games.length === 0) {
+    if (allGames.length === 0) {
       const user = await prisma.user.findUnique({ where: { telegramId: ctx.from!.id } });
       const isOrganizer = user ? await prisma.organizer.findUnique({ where: { userId: user.id } }) : null;
 
@@ -84,40 +86,63 @@ export class CommandHandlers {
       return;
     }
 
-    // Получаем количество регистраций для каждой игры
-    const gamesWithRegistrations = await Promise.all(
-      games.map(async (game: any) => {
-        const confirmedCount = await prisma.registration.count({
-          where: {
+    // Фильтруем игры: показываем только те, к которым пользователь еще не присоединился или отменил участие
+    const availableGames = [];
+    for (const game of allGames) {
+      const registration = await prisma.registration.findUnique({
+        where: {
+          gameId_userId: {
             gameId: game.id,
-            status: 'confirmed'
+            userId: userId!
           }
-        });
-        return { ...game, confirmedRegistrations: confirmedCount };
-      })
-    );
+        }
+      });
+
+      // Показываем игру, если нет регистрации или статус 'canceled'
+      if (!registration || registration.status === 'canceled') {
+        availableGames.push(game);
+      }
+    }
+
+    if (availableGames.length === 0) {
+          await ctx.reply('Все доступные игры уже заняты тобой. Проверь свои регистрации командой /my');
+          return;
+        }
     
-    const gamesList = gamesWithRegistrations.map((game: any) => {
-      const date = formatGameTimeForNotification(game.startsAt);
-      const status = getGameStatusName(game._status);
-      const level = game.levelTag ? ` (${game.levelTag})` : '';
-      const price = game.priceText ? ` - ${game.priceText}` : '';
-      const availableSpots = game.capacity - game.confirmedRegistrations;
-      const venue = getVenueName(game.venueId);
+        // Получаем количество регистраций для каждой доступной игры
+        const gamesWithRegistrations = await Promise.all(
+          availableGames.map(async (game: any) => {
+            const confirmedCount = await prisma.registration.count({
+              where: {
+                gameId: game.id,
+                status: 'confirmed'
+              }
+            });
+            return { ...game, confirmedRegistrations: confirmedCount };
+          })
+        );
+    
+        const gamesList = gamesWithRegistrations.map((game: any) => {
+          const date = formatGameTimeForNotification(game.startsAt);
+          const status = getGameStatusName(game._status);
+          const level = game.levelTag ? ` (${game.levelTag})` : '';
+          const price = game.priceText ? ` - ${game.priceText}` : '';
+          const availableSpots = game.capacity - game.confirmedRegistrations;
+          const venue = getVenueName(game.venueId);
+    
+          return `🎾 ${date}${level}${price}\n${venue}\n${status} (${availableSpots} мест свободно)\nID: \`${game.id}\``;
+        }).join('\n\n');
+    
+        // Создаем кнопки для каждой игры
+        const buttons: InlineKeyboardButton[][] = gamesWithRegistrations.map((game: any) => [
+          { text: `${formatDateForButton(game.startsAt)} 🎾 Присоединиться`, callback_data: `join_game_${game.id}` }
+        ]);
 
-      return `🎾 ${date}${level}${price}\n${venue}\n${status} (${availableSpots} мест свободно)\nID: \`${game.id}\``;
-    }).join('\n\n');
-
-    // Создаем кнопки для каждой игры
-    const buttons = gamesWithRegistrations.map((game: any) => [
-      { text: `${formatDateForButton(game.startsAt)} 🎾 Присоединиться`, callback_data: `join_game_${game.id}` }
-    ]);
-
-    await ctx.reply(`Активные игры:\n\n${gamesList}`, {
-      parse_mode: 'Markdown',
-      reply_markup: { inline_keyboard: buttons }
-    });
-  }
+        await ctx.reply(`Доступные игры:\n\n${gamesList}`, {
+          parse_mode: 'Markdown',
+          reply_markup: { inline_keyboard: buttons }
+        });
+      }
 
   static async handleJoin(ctx: Context, gameId: string): Promise<void> {
     const user = await prisma.user.findUnique({ where: { telegramId: ctx.from!.id } });
@@ -232,130 +257,130 @@ export class CommandHandlers {
     const isOrganizer = await prisma.organizer.findUnique({ where: { userId: user.id } });
 
     let message = '';
-    let buttons: any[] = [];
-
-    // Получить все регистрации пользователя как игрока
-    const { GetUserRegistrationsQuery } = await import('../application/queries/GetUserRegistrationsQuery.js');
-    const playerQuery = new GetUserRegistrationsQuery(user.id);
-    const playerRegistrations = await playerQuery.execute();
-
-    if (playerRegistrations.length > 0) {
-      message += '🎾 *Игры как участник:*\n\n';
-
-      const playerGamesList = playerRegistrations.map((reg: any) => {
-        const game = reg.game;
-        const date = formatGameTimeForNotification(game.startsAt);
-
-        const status = getRegistrationStatusName(reg.status);
-        const payment = getPaymentStatusName(reg.paymentStatus);
-        const level = game.levelTag ? ` (${game.levelTag})` : '';
-        const price = game.priceText ? ` - ${game.priceText}` : '';
-        const venue = getVenueName(game.venueId);
-
-        const organizerName = getOrganizerName(game);
-        return `🎾 ${date}${level}${price}\n${venue}\n${status} | ${payment}\n${organizerName}ID: \`${game.id}\``;
-      }).join('\n\n');
-
-      message += playerGamesList + '\n\n';
-
-      // Кнопки для игр как участника
-      const playerButtons = playerRegistrations.map((reg: any) => {
-        const game = reg.game;
-        const buttonRow = [];
-
-        const buttonDate = formatDateForButton(game.startsAt);
-
-        if (reg.status === 'canceled') {
-          // Для отмененных регистраций - кнопка повторного присоединения
-          buttonRow.push({
-            text: `🔄 ${buttonDate} Присоединиться`,
-            callback_data: `join_game_${game.id}`
+        let buttons: InlineKeyboardButton[][] = [];
+    
+        // Получить все регистрации пользователя как игрока
+        const { GetUserRegistrationsQuery } = await import('../application/queries/GetUserRegistrationsQuery.js');
+        const playerQuery = new GetUserRegistrationsQuery(user.id);
+        const playerRegistrations = await playerQuery.execute();
+    
+        if (playerRegistrations.length > 0) {
+          message += '🎾 *Игры как участник:*\n\n';
+    
+          const playerGamesList = playerRegistrations.map((reg: any) => {
+            const game = reg.game;
+            const date = formatGameTimeForNotification(game.startsAt);
+    
+            const status = getRegistrationStatusName(reg.status);
+            const payment = getPaymentStatusName(reg.paymentStatus);
+            const level = game.levelTag ? ` (${game.levelTag})` : '';
+            const price = game.priceText ? ` - ${game.priceText}` : '';
+            const venue = getVenueName(game.venueId);
+    
+            const organizerName = getOrganizerName(game);
+            return `🎾 ${date}${level}${price}\n${venue}\n${status} | ${payment}\n${organizerName}ID: \`${game.id}\``;
+          }).join('\n\n');
+    
+          message += playerGamesList + '\n\n';
+    
+          // Кнопки для игр как участника
+          const playerButtons = playerRegistrations.map((reg: any) => {
+            const game = reg.game;
+            const buttonRow: InlineKeyboardButton[] = [];
+    
+            const buttonDate = formatDateForButton(game.startsAt);
+    
+            if (reg.status === 'canceled') {
+              // Для отмененных регистраций - кнопка повторного присоединения
+              buttonRow.push({
+                text: `🔄 ${buttonDate} Присоединиться`,
+                callback_data: `join_game_${game.id}`
+              });
+            } else {
+              // Для активных регистраций - кнопка отмены записи
+              buttonRow.push({
+                text: `❌ ${buttonDate} Отменить`,
+                callback_data: `leave_game_${game.id}`
+              });
+    
+              // Кнопка оплаты, если не оплачено и статус confirmed
+              if (reg.paymentStatus === 'unpaid' && reg.status === 'confirmed') {
+                buttonRow.push({
+                  text: `💰 ${buttonDate} Оплатить`,
+                  callback_data: `pay_game_${game.id}`
+                });
+              }
+            }
+    
+            return buttonRow;
           });
-        } else {
-          // Для активных регистраций - кнопка отмены записи
-          buttonRow.push({
-            text: `❌ ${buttonDate} Отменить`,
-            callback_data: `leave_game_${game.id}`
-          });
+    
+          buttons.push(...playerButtons);
+        }
 
-          // Кнопка оплаты, если не оплачено и статус confirmed
-          if (reg.paymentStatus === 'unpaid' && reg.status === 'confirmed') {
-            buttonRow.push({
-              text: `💰 ${buttonDate} Оплатить`,
-              callback_data: `pay_game_${game.id}`
-            });
+    // Если пользователь является организатором, показать созданные им игры
+        if (isOrganizer) {
+          const currentOrganizerGames = await prisma.game.findMany({
+            where: { organizerId: isOrganizer.id },
+            include: {
+              registrations: {
+                include: { user: true }
+              }
+            },
+            orderBy: { startsAt: 'asc' }
+          });
+    
+          if (currentOrganizerGames.length > 0) {
+            message += '👑 *Созданные игры:*\n\n';
+    
+            const organizerGamesList = currentOrganizerGames.map((game: any) => {
+              const date = formatGameTimeForNotification(game.startsAt);
+              const status = getGameStatusName(game.status);
+              const level = game.levelTag ? ` (${game.levelTag})` : '';
+              const price = game.priceText ? ` - ${game.priceText}` : '';
+              const confirmedCount = game.registrations.filter((r: any) => r.status === 'confirmed').length;
+              const availableSpots = game.capacity - confirmedCount;
+              const venue = getVenueName(game.venueId);
+    
+              return `🎾 ${date}${level}${price}\n${venue}\n${status} (${availableSpots} мест свободно)\nУчастников: ${confirmedCount}/${game.capacity}\nID: \`${game.id}\``;
+            }).join('\n\n');
+    
+            message += organizerGamesList;
+    
+            // Кнопки для управления созданными играми
+                    const organizerButtons = currentOrganizerGames.map((game: any) => {
+                      const buttonDate = formatDateForButton(game.startsAt);
+                      const buttonRow: InlineKeyboardButton[] = [];
+            
+                      if (game.status === 'open') {
+                        buttonRow.push({
+                          text: `🔒 ${buttonDate} Закрыть`,
+                          callback_data: `close_game_${game.id}`
+                        });
+                      }
+            
+                      buttonRow.push({
+                        text: `💰 ${buttonDate} Оплаты`,
+                        callback_data: `payments_game_${game.id}`
+                      });
+            
+                      return buttonRow;
+                    });
+    
+            buttons.push(...organizerButtons);
           }
         }
 
-        return buttonRow;
-      });
-
-      buttons.push(...playerButtons);
-    }
-
-    // Если пользователь является организатором, показать созданные им игры
-    if (isOrganizer) {
-      const organizerGames = await prisma.game.findMany({
-        where: { organizerId: isOrganizer.id },
-        include: {
-          registrations: {
-            include: { user: true }
-          }
-        },
-        orderBy: { startsAt: 'asc' }
-      });
-
-      if (organizerGames.length > 0) {
-        message += '👑 *Созданные игры:*\n\n';
-
-        const organizerGamesList = organizerGames.map((game: any) => {
-          const date = formatGameTimeForNotification(game.startsAt);
-          const status = getGameStatusName(game.status);
-          const level = game.levelTag ? ` (${game.levelTag})` : '';
-          const price = game.priceText ? ` - ${game.priceText}` : '';
-          const confirmedCount = game.registrations.filter((r: any) => r.status === 'confirmed').length;
-          const availableSpots = game.capacity - confirmedCount;
-          const venue = getVenueName(game.venueId);
-
-          return `🎾 ${date}${level}${price}\n${venue}\n${status} (${availableSpots} мест свободно)\nУчастников: ${confirmedCount}/${game.capacity}\nID: \`${game.id}\``;
-        }).join('\n\n');
-
-        message += organizerGamesList;
-
-        // Кнопки для управления созданными играми
-        const organizerButtons = organizerGames.map((game: any) => {
-          const buttonDate = formatDateForButton(game.startsAt);
-          const buttonRow = [];
-
-          if (game.status === 'open') {
-            buttonRow.push({
-              text: `🔒 ${buttonDate} Закрыть`,
-              callback_data: `close_game_${game.id}`
-            });
-          }
-
-          buttonRow.push({
-            text: `💰 ${buttonDate} Оплаты`,
-            callback_data: `payments_game_${game.id}`
-          });
-
-          return buttonRow;
-        });
-
-        buttons.push(...organizerButtons);
-      }
-    }
-
     if (message === '') {
-      await ctx.reply('У тебя нет активных регистраций и созданных игр. Найди игру командой /games или создай новую командой /newgame');
-      return;
-    }
+          await ctx.reply('У тебя нет активных регистраций и созданных игр. Найди игру командой /games или создай новую командой /newgame');
+          return;
+        }
 
-    await ctx.reply(message, {
-      parse_mode: 'Markdown',
-      reply_markup: buttons.length > 0 ? { inline_keyboard: buttons } : undefined
-    });
-  }
+        await ctx.reply(message, {
+          parse_mode: 'Markdown',
+          reply_markup: { inline_keyboard: buttons }
+        });
+      }
 
   static async handlePayments(ctx: Context, gameId: string): Promise<void> {
     const telegramId = ctx.from!.id;
@@ -702,34 +727,35 @@ export class CommandHandlers {
     const hasPlayerRegistrations = user.levelTag;
 
     let helpText = '🎾 Доступные команды:\n\n';
-
-    // Общие команды
-    helpText += 'Общие команды:\n';
-    helpText += '/start - Регистрация в боте\n';
-    helpText += '/games - Список активных игр\n';
-    helpText += '/game ID - Информация об игре\n';
-    helpText += '/my - Мои игры и регистрации\n\n';
-
-    // Команды для игроков, если пользователь имеет регистрации
-    if (hasPlayerRegistrations) {
-      helpText += 'Команды для игроков:\n';
-      helpText += '/join ID - Записаться на игру\n';
-      helpText += '/leave ID - Отменить запись\n';
-      helpText += '/pay ID - Отметить оплату\n';
-      helpText += '/selectorganizers - Выбрать организаторов\n';
-      helpText += '/myorganizers - Мои организаторы\n';
-      helpText += '/respondtogame GAME_ID yes/no - Ответить на приглашение\n\n';
-    }
-
-    // Команды для организаторов
-    if (isOrganizer) {
-      helpText += 'Команды для организаторов:\n';
-      helpText += '/newgame - Создать новую игру\n';
-      helpText += '/close ID - Закрыть запись на игру\n';
-      helpText += '/payments ID - Статус оплат участников\n';
-      helpText += '/myplayers - Мои подтвержденные игроки\n';
-      helpText += '/pendingplayers - Игроки, ожидающие подтверждения\n';
-    }
+    
+        // Общие команды
+        helpText += 'Общие команды:\n';
+        helpText += '/start - Регистрация в боте\n';
+        helpText += '/games - Список активных игр\n';
+        helpText += '/game ID - Информация об игре\n';
+        helpText += '/my - Мои игры и регистрации\n';
+        helpText += '/menu - Палитра команд\n\n';
+    
+        // Команды для игроков, если пользователь имеет регистрации
+        if (hasPlayerRegistrations) {
+          helpText += 'Команды для игроков:\n';
+          helpText += '/join ID - Записаться на игру\n';
+          helpText += '/leave ID - Отменить запись\n';
+          helpText += '/pay ID - Отметить оплату\n';
+          helpText += '/selectorganizers - Выбрать организаторов\n';
+          helpText += '/myorganizers - Мои организаторы\n';
+          helpText += '/respondtogame GAME_ID yes/no - Ответить на приглашение\n\n';
+        }
+    
+        // Команды для организаторов
+        if (isOrganizer) {
+          helpText += 'Команды для организаторов:\n';
+          helpText += '/newgame - Создать новую игру\n';
+          helpText += '/close ID - Закрыть запись на игру\n';
+          helpText += '/payments ID - Статус оплат участников\n';
+          helpText += '/myplayers - Мои подтвержденные игроки\n';
+          helpText += '/pendingplayers - Игроки, ожидающие подтверждения\n';
+          }
 
     await ctx.reply(helpText);
   }

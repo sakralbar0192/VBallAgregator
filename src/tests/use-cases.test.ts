@@ -478,6 +478,161 @@ describe('Game Registration Use Cases', () => {
      expect(mockCtx.reply).toHaveBeenCalledWith('Нет активных игр. Ждем, когда организаторы создадут новые игры');
    }, 10000);
 
+   it('should filter out games user already joined', async () => {
+     // Given: user, organizer, and games
+     const { user, organizer } = await createTestOrganizer(123456789n, 'Test User', 'Test Organizer');
+     
+     // Create two games
+     const game1 = await prisma.game.create({
+       data: {
+         organizerId: organizer.id,
+         venueId: 'venue1',
+         startsAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+         capacity: 10,
+         status: GameStatus.open,
+         createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000) // outside priority window
+       }
+     });
+     
+     const game2 = await prisma.game.create({
+       data: {
+         organizerId: organizer.id,
+         venueId: 'venue2',
+         startsAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
+         capacity: 10,
+         status: GameStatus.open,
+         createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000) // outside priority window
+       }
+     });
+
+     // User joins game1
+     await joinGame(game1.id, user.id);
+
+     // When: call handleGames
+     await CommandHandlers.handleGames(mockCtx);
+
+     // Then: should only show game2 (game1 filtered out because user joined)
+     expect(mockCtx.reply).toHaveBeenCalledWith(
+       expect.stringContaining('Доступные игры:'),
+       expect.objectContaining({
+         reply_markup: expect.objectContaining({
+           inline_keyboard: expect.arrayContaining([
+             expect.arrayContaining([
+               expect.objectContaining({
+                 text: expect.stringContaining('🎾 Присоединиться'),
+                 callback_data: `join_game_${game2.id}`
+               })
+             ])
+           ])
+         })
+       })
+     );
+   }, 10000);
+
+   it('should show games with cancelled registration', async () => {
+     // Given: user, organizer, and game
+     const { user, organizer } = await createTestOrganizer(123456789n, 'Test User', 'Test Organizer');
+     const game = await prisma.game.create({
+       data: {
+         organizerId: organizer.id,
+         venueId: 'venue1',
+         startsAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+         capacity: 10,
+         status: GameStatus.open,
+         createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000) // outside priority window
+       }
+     });
+
+     // User joins and then leaves (cancels registration)
+     await joinGame(game.id, user.id);
+     await leaveGame(game.id, user.id);
+
+     // When: call handleGames
+     await CommandHandlers.handleGames(mockCtx);
+
+     // Then: should show the game (because registration was cancelled)
+     expect(mockCtx.reply).toHaveBeenCalledWith(
+       expect.stringContaining('Доступные игры:'),
+       expect.objectContaining({
+         reply_markup: expect.objectContaining({
+           inline_keyboard: expect.arrayContaining([
+             expect.arrayContaining([
+               expect.objectContaining({
+                 text: expect.stringContaining('🎾 Присоединиться'),
+                 callback_data: `join_game_${game.id}`
+               })
+             ])
+           ])
+         })
+       })
+     );
+   }, 10000);
+
+   it('should allow re-joining after cancellation and notify organizer', async () => {
+     // Given: user joins, leaves, then re-joins
+     const { user, organizer } = await createTestOrganizer(123456789n, 'Test User', 'Test Organizer');
+     const game = await prisma.game.create({
+       data: {
+         organizerId: organizer.id,
+         venueId: 'venue1',
+         startsAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+         capacity: 10,
+         status: GameStatus.open,
+         createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000) // outside priority window
+       }
+     });
+
+     // User joins
+     await joinGame(game.id, user.id);
+     let registration = await prisma.registration.findFirst({
+       where: { gameId: game.id, userId: user.id }
+     });
+     expect(registration?.status).toBe(RegStatus.confirmed);
+     const firstRegId = registration?.id;
+
+     // User leaves (cancels)
+     await leaveGame(game.id, user.id);
+     registration = await prisma.registration.findFirst({
+       where: { gameId: game.id, userId: user.id }
+     });
+     expect(registration?.status).toBe(RegStatus.canceled);
+
+     // When: user re-joins
+     const result = await joinGame(game.id, user.id);
+
+     // Then: should be confirmed again and use same registration ID
+     expect(result.status).toBe(RegStatus.confirmed);
+     registration = await prisma.registration.findFirst({
+       where: { gameId: game.id, userId: user.id }
+     });
+     expect(registration?.status).toBe(RegStatus.confirmed);
+     expect(registration?.id).toBe(firstRegId); // Same registration ID, not a new one
+   }, 10000);
+
+   it('should show message when all games already occupied by user', async () => {
+     // Given: user, organizer, and game
+     const { user, organizer } = await createTestOrganizer(123456789n, 'Test User', 'Test Organizer');
+     const game = await prisma.game.create({
+       data: {
+         organizerId: organizer.id,
+         venueId: 'venue1',
+         startsAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+         capacity: 10,
+         status: GameStatus.open,
+         createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000) // outside priority window
+       }
+     });
+
+     // User joins the game
+     await joinGame(game.id, user.id);
+
+     // When: call handleGames
+     await CommandHandlers.handleGames(mockCtx);
+
+     // Then: should show message that all games are occupied
+     expect(mockCtx.reply).toHaveBeenCalledWith('Все доступные игры уже заняты тобой. Проверь свои регистрации командой /my');
+   }, 10000);
+
    it('should handle handleJoin command with valid game', async () => {
      // Given: user and game
      const { user, organizer } = await createTestOrganizer(123456789n, 'Test User', 'Test Organizer');

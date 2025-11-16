@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "dev": "tsx index.ts",
+    "dev": "tsx -r dotenv/config index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "prisma:generate": "prisma generate",
@@ -13,11 +13,11 @@
     "prisma:studio": "cross-env-shell \"DATABASE_URL=postgresql://user:password@localhost:5434/vball_dev\" prisma studio",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
-    "test": "NODE_OPTIONS=--experimental-vm-modules jest",
-    "test:unit": "NODE_OPTIONS=--experimental-vm-modules jest src/tests/use-cases.test.ts",
-    "test:integration": "NODE_OPTIONS=--experimental-vm-modules jest src/tests/integration.test.ts",
-    "test:ci": "SKIP_INTEGRATION_TESTS=true NODE_OPTIONS=--experimental-vm-modules jest",
-    "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch",
+    "test": "node -r dotenv/config --experimental-vm-modules ./node_modules/.bin/jest",
+    "test:unit": "node -r dotenv/config --experimental-vm-modules ./node_modules/.bin/jest src/tests/use-cases.test.ts",
+    "test:integration": "node -r dotenv/config --experimental-vm-modules ./node_modules/.bin/jest src/tests/integration.test.ts",
+    "test:ci": "SKIP_INTEGRATION_TESTS=true node -r dotenv/config --experimental-vm-modules ./node_modules/.bin/jest",
+    "test:watch": "node -r dotenv/config --experimental-vm-modules ./node_modules/.bin/jest --watch",
     "lint": "echo 'Linting not configured yet'"
   },
   "dependencies": {

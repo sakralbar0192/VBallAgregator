@@ -6,11 +6,8 @@
 import {
   Logger,
   LogContext,
-  PerformanceTracker,
   generateCorrelationId,
-  createLogContext,
   ArchitectureLayer,
-  StructuredLog,
   enhancedLogger
 } from './enhanced-logger.js';
 

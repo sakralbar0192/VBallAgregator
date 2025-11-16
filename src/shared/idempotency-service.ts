@@ -6,7 +6,7 @@ export interface IdempotencyService {
   ensureNotSentRecently(userId: string, gameId: string, type: string, cooldown: number): Promise<boolean>;
 }
 
-export class RedisIdempotencyService implements IdempotencyService {
+class RedisIdempotencyService implements IdempotencyService {
   private client: ReturnType<typeof createClient>;
 
   constructor() {

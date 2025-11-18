@@ -4,7 +4,6 @@ import { GameDomainService } from '../../domain/services/game-domain-service.js'
 import { SchedulerService } from '../../shared/scheduler-service.js';
 import { v4 as uuid } from 'uuid';
 import { Game } from '../../domain/game.js';
-import { logger } from '../../shared/logger.js';
 import { BusinessRuleError } from '../../domain/errors/business-rule-error.js';
 import { metrics } from '../../shared/metrics.js';
 import { LoggerFactory } from '../../shared/layer-logger.js';
@@ -36,6 +35,8 @@ export interface RegisterOrganizerCommand {
 }
 
 export class GameApplicationService {
+  private logger = LoggerFactory.service('game-service');
+
   constructor(
     private gameRepo: GameRepo,
     private registrationRepo: RegistrationRepo,
@@ -256,7 +257,7 @@ export class GameApplicationService {
     await this.schedulerService.schedulePaymentReminder12h(gameId, game.startsAt);
     await this.schedulerService.schedulePaymentReminder24h(gameId, game.startsAt);
 
-    logger.info('Game finished and payment reminders scheduled', { gameId });
+    this.logger.info('finishGame', LOG_MESSAGES.SERVICES.GAME_SERVICE_FINISH_COMPLETED, { gameId });
   }
 
   async registerOrganizer(command: RegisterOrganizerCommand): Promise<{ ok: boolean }> {
@@ -269,7 +270,7 @@ export class GameApplicationService {
       });
     });
 
-    logger.info('Organizer registered', { userId: command.userId, title: command.title });
+    this.logger.info('registerOrganizer', LOG_MESSAGES.SERVICES.GAME_SERVICE_ORGANIZER_REGISTERED, { userId: command.userId, title: command.title });
     return { ok: true };
   }
 }

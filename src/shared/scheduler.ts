@@ -1,5 +1,8 @@
 import { Queue, Worker } from 'bullmq';
-import { logger } from './logger.js';
+import { LoggerFactory } from './layer-logger.js';
+import { LOG_MESSAGES } from './logging-messages.js';
+
+const logger = LoggerFactory.external('scheduler');
 
 // Конфигурация Redis (используем переменные окружения)
 const redisConfig = {
@@ -25,7 +28,7 @@ export async function scheduleGameReminder24h(gameId: string, startsAt: Date) {
     { delay, removeOnComplete: true, removeOnFail: true }
   );
 
-  logger.info('Scheduled 24h reminder', { gameId, delay: Math.round(delay / 1000 / 60) + 'min' });
+  logger.info('schedule24hReminder', LOG_MESSAGES.SCHEDULER.GAME_REMINDER_24H_SCHEDULED, { gameId, delay: Math.round(delay / 1000 / 60) + 'min' });
 }
 
 /**
@@ -41,7 +44,7 @@ export async function scheduleGameReminder2h(gameId: string, startsAt: Date) {
     { delay, removeOnComplete: true, removeOnFail: true }
   );
 
-  logger.info('Scheduled 2h reminder', { gameId, delay: Math.round(delay / 1000 / 60) + 'min' });
+  logger.info('schedule2hReminder', LOG_MESSAGES.SCHEDULER.GAME_REMINDER_2H_SCHEDULED, { gameId, delay: Math.round(delay / 1000 / 60) + 'min' });
 }
 
 /**
@@ -57,7 +60,7 @@ export async function schedulePaymentReminder12h(gameId: string, startsAt: Date)
     { delay, removeOnComplete: true, removeOnFail: true }
   );
 
-  logger.info('Scheduled payment 12h reminder', { gameId, delay: Math.round(delay / 1000 / 60) + 'min' });
+  logger.info('schedulePayment12hReminder', LOG_MESSAGES.SCHEDULER.PAYMENT_REMINDER_12H_SCHEDULED, { gameId, delay: Math.round(delay / 1000 / 60) + 'min' });
 }
 
 /**
@@ -73,7 +76,7 @@ export async function schedulePaymentReminder24h(gameId: string, startsAt: Date)
     { delay, removeOnComplete: true, removeOnFail: true }
   );
 
-  logger.info('Scheduled payment 24h reminder', { gameId, delay: Math.round(delay / 1000 / 60) + 'min' });
+  logger.info('schedulePayment24hReminder', LOG_MESSAGES.SCHEDULER.PAYMENT_REMINDER_24H_SCHEDULED, { gameId, delay: Math.round(delay / 1000 / 60) + 'min' });
 }
 
 /**
@@ -85,7 +88,7 @@ export function initializeWorkers() {
     'game-reminders',
     async (job) => {
       const { gameId } = job.data;
-      logger.info('Processing reminder job', { jobId: job.id, gameId, type: job.name });
+      logger.info('processReminderJob', LOG_MESSAGES.SCHEDULER.REMINDER_JOB_PROCESSING, { jobId: job.id, gameId, type: job.name });
 
       // Импортируем здесь, чтобы избежать циклических зависимостей
       const { EventBus } = await import('./event-bus.js');
@@ -99,7 +102,7 @@ export function initializeWorkers() {
           await eventBus.publish({ type: 'GameReminder2h', occurredAt: new Date(), id: '', payload: { gameId } });
           break;
         default:
-          logger.warn('Unknown reminder job type', { jobId: job.id, type: job.name });
+          logger.warn('processReminderJob', LOG_MESSAGES.SCHEDULER.UNKNOWN_REMINDER_JOB_TYPE, { jobId: job.id, type: job.name });
       }
     },
     { connection: redisConfig }
@@ -110,7 +113,7 @@ export function initializeWorkers() {
     'payment-reminders',
     async (job) => {
       const { gameId } = job.data;
-      logger.info('Processing payment reminder job', { jobId: job.id, gameId, type: job.name });
+      logger.info('processPaymentReminderJob', LOG_MESSAGES.SCHEDULER.PAYMENT_REMINDER_JOB_PROCESSING, { jobId: job.id, gameId, type: job.name });
 
       const { EventBus } = await import('./event-bus.js');
       const eventBus = EventBus.getInstance();
@@ -123,7 +126,7 @@ export function initializeWorkers() {
           await eventBus.publish({ type: 'PaymentReminder24h', occurredAt: new Date(), id: '', payload: { gameId } });
           break;
         default:
-          logger.warn('Unknown payment reminder job type', { jobId: job.id, type: job.name });
+          logger.warn('processPaymentReminderJob', LOG_MESSAGES.SCHEDULER.UNKNOWN_PAYMENT_REMINDER_JOB_TYPE, { jobId: job.id, type: job.name });
       }
     },
     { connection: redisConfig }
@@ -131,14 +134,14 @@ export function initializeWorkers() {
 
   // Обработка ошибок воркеров
   reminderWorker.on('failed', (job, err) => {
-    logger.error('Reminder job failed', { jobId: job?.id, error: err.message });
+    logger.error('initializeWorkers', LOG_MESSAGES.SCHEDULER.REMINDER_JOB_FAILED, err, { jobId: job?.id, error: err.message });
   });
 
   paymentReminderWorker.on('failed', (job, err) => {
-    logger.error('Payment reminder job failed', { jobId: job?.id, error: err.message });
+    logger.error('initializeWorkers', LOG_MESSAGES.SCHEDULER.PAYMENT_REMINDER_JOB_FAILED, err, { jobId: job?.id, error: err.message });
   });
 
-  logger.info('Scheduler workers initialized');
+  logger.info('initializeWorkers', LOG_MESSAGES.SCHEDULER.WORKERS_INITIALIZED);
 }
 
 /**
@@ -149,5 +152,5 @@ export async function closeQueues() {
     reminderQueue.close(),
     paymentReminderQueue.close(),
   ]);
-  logger.info('Queues closed');
+  logger.info('closeQueues', LOG_MESSAGES.SCHEDULER.QUEUES_CLOSED);
 }

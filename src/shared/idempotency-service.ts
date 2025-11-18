@@ -1,6 +1,9 @@
 import { createClient } from 'redis';
 import { config } from './config.js';
-import { logger } from './logger.js';
+import { LoggerFactory } from './layer-logger.js';
+import { LOG_MESSAGES } from './logging-messages.js';
+
+const logger = LoggerFactory.external('idempotency-service');
 
 export interface IdempotencyService {
   ensureNotSentRecently(userId: string, gameId: string, type: string, cooldown: number): Promise<boolean>;
@@ -20,11 +23,11 @@ class RedisIdempotencyService implements IdempotencyService {
     });
 
     this.client.on('error', (err) => {
-      logger.error('Redis connection error in idempotency service', { error: err.message });
+      logger.error('constructor', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.IDEMPOTENCY_SERVICE_REDIS_ERROR, err, { error: err.message });
     });
 
     this.client.on('connect', () => {
-      logger.info('Connected to Redis for idempotency');
+      logger.info('constructor', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.IDEMPOTENCY_SERVICE_REDIS_CONNECTED);
     });
   }
 
@@ -69,7 +72,7 @@ class RedisIdempotencyService implements IdempotencyService {
       });
 
       if (result === 0) {
-        logger.info('Notification blocked by idempotency', {
+        logger.info('ensureNotSentRecently', 'Уведомление заблокировано проверкой идемпотентности', {
           userId,
           gameId,
           type,
@@ -78,7 +81,7 @@ class RedisIdempotencyService implements IdempotencyService {
         return false; // Block duplicate
       }
 
-      logger.info('Notification allowed by idempotency check', {
+      logger.info('ensureNotSentRecently', 'Уведомление разрешено проверкой идемпотентности', {
         userId,
         gameId,
         type,
@@ -87,7 +90,7 @@ class RedisIdempotencyService implements IdempotencyService {
 
       return true; // Allow notification
     } catch (error) {
-      logger.warn('Idempotency check failed, allowing notification', {
+      logger.warn('ensureNotSentRecently', 'Проверка идемпотентности не удалась, разрешение уведомления', {
         userId,
         gameId,
         type,

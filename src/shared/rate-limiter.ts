@@ -1,6 +1,9 @@
 import { createClient } from 'redis';
 import { config } from './config.js';
-import { logger } from './logger.js';
+import { LoggerFactory } from './layer-logger.js';
+import { LOG_MESSAGES } from './logging-messages.js';
+
+const logger = LoggerFactory.external('rate-limiter');
 
 export interface RateLimiterService {
   checkQuota(key: string, limit: number, window: number): Promise<boolean>;
@@ -21,11 +24,11 @@ export class RedisRateLimiter implements RateLimiterService {
     });
 
     this.client.on('error', (err) => {
-      logger.error('Redis connection error', { error: err.message });
+      logger.error('constructor', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.RATE_LIMITER_REDIS_ERROR, err, { error: err.message });
     });
 
     this.client.on('connect', () => {
-      logger.info('Connected to Redis for rate limiting');
+      logger.info('constructor', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.RATE_LIMITER_REDIS_CONNECTED);
     });
   }
 
@@ -58,7 +61,7 @@ export class RedisRateLimiter implements RateLimiterService {
 
       return currentCount < limit;
     } catch (error) {
-      logger.warn('Rate limiter check failed, allowing request', {
+      logger.warn('checkTelegramQuota', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.RATE_LIMITER_CHECK_FAILED, {
         key,
         error: error instanceof Error ? error.message : 'Unknown error'
       });
@@ -81,7 +84,7 @@ export class RedisRateLimiter implements RateLimiterService {
 
       await multi.exec();
     } catch (error) {
-      logger.warn('Rate limiter consume failed, ignoring', {
+      logger.warn('consumeTelegramQuota', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.RATE_LIMITER_CONSUME_FAILED, {
         key,
         tokens,
         error: error instanceof Error ? error.message : 'Unknown error'

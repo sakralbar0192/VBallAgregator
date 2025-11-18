@@ -1,7 +1,10 @@
 import { Queue, Worker, Job } from 'bullmq';
 import { config } from './config.js';
 import { EventBus } from './event-bus.js';
-import { logger } from './logger.js';
+import { LoggerFactory } from './layer-logger.js';
+import { LOG_MESSAGES } from './logging-messages.js';
+
+const logger = LoggerFactory.external('scheduler-service');
 
 export class SchedulerService {
   private reminderQueue: Queue;
@@ -63,7 +66,7 @@ export class SchedulerService {
       }
     );
 
-    logger.info('Scheduled 24h reminder', {
+    logger.info('schedule24hReminder', LOG_MESSAGES.SCHEDULER.GAME_REMINDER_24H_SCHEDULED, {
       gameId,
       scheduledFor: new Date(Date.now() + delay).toISOString()
     });
@@ -82,7 +85,7 @@ export class SchedulerService {
       }
     );
 
-    logger.info('Scheduled payment 12h reminder', {
+    logger.info('schedulePayment12hReminder', LOG_MESSAGES.SCHEDULER.PAYMENT_REMINDER_12H_SCHEDULED, {
       gameId,
       scheduledFor: new Date(Date.now() + delay).toISOString()
     });
@@ -101,7 +104,7 @@ export class SchedulerService {
       }
     );
 
-    logger.info('Scheduled payment 24h reminder', {
+    logger.info('schedulePayment24hReminder', LOG_MESSAGES.SCHEDULER.PAYMENT_REMINDER_24H_SCHEDULED, {
       gameId,
       scheduledFor: new Date(Date.now() + delay).toISOString()
     });
@@ -120,7 +123,7 @@ export class SchedulerService {
       }
     );
 
-    logger.info('Scheduled priority window check', {
+    logger.info('schedulePriorityWindowCheck', 'Проверка приоритетного окна запланирована', {
       gameId,
       scheduledFor: closesAt.toISOString()
     });
@@ -168,7 +171,7 @@ export class SchedulerService {
     // Error handling
     this.workers.forEach(worker => {
       worker.on('failed', (job, err) => {
-        logger.error('Job failed', {
+        logger.error('initializeWorkers', 'Задача не удалась', err, {
           jobId: job?.id,
           jobName: job?.name,
           error: err.message,
@@ -177,7 +180,7 @@ export class SchedulerService {
       });
 
       worker.on('stalled', (jobId) => {
-        logger.warn('Job stalled', { jobId });
+        logger.warn('initializeWorkers', 'Задача зависла', { jobId });
       });
     });
   }
@@ -201,7 +204,7 @@ export class SchedulerService {
         });
         break;
       default:
-        logger.warn('Unknown reminder job type', { jobName: job.name });
+        logger.warn('processReminderJob', LOG_MESSAGES.SCHEDULER.UNKNOWN_REMINDER_JOB_TYPE, { jobName: job.name });
     }
   }
 
@@ -224,7 +227,7 @@ export class SchedulerService {
         });
         break;
       default:
-        logger.warn('Unknown payment reminder job type', { jobName: job.name });
+        logger.warn('processPaymentReminderJob', LOG_MESSAGES.SCHEDULER.UNKNOWN_PAYMENT_REMINDER_JOB_TYPE, { jobName: job.name });
     }
   }
 
@@ -236,7 +239,7 @@ export class SchedulerService {
       const { checkPriorityWindowExpiration } = await import('../application/use-cases.js');
       await checkPriorityWindowExpiration(gameId);
     } else {
-      logger.warn('Unknown priority window check job type', { jobName: job.name });
+      logger.warn('processPriorityWindowCheck', 'Неизвестный тип задачи проверки приоритетного окна', { jobName: job.name });
     }
   }
 

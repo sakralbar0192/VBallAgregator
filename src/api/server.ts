@@ -1,6 +1,9 @@
 import Fastify from 'fastify';
 import { healthRoutes } from './health-endpoint.js';
-import { logger } from '../shared/logger.js';
+import { LoggerFactory } from '../shared/layer-logger.js';
+import { LOG_MESSAGES } from '../shared/logging-messages.js';
+
+const logger = LoggerFactory.external('api-server');
 
 export async function createServer() {
   const fastify = Fastify({
@@ -24,7 +27,7 @@ export async function createServer() {
 
   // Graceful shutdown
   const closeGracefully = async (signal: string) => {
-    logger.info(`Received signal ${signal}, closing server gracefully`);
+    logger.info('closeGracefully', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.API_SERVER_SIGNAL_RECEIVED.replace('{{signal}}', signal));
     await fastify.close();
     process.exit(0);
   };
@@ -44,11 +47,11 @@ export async function startServer() {
       port: 3001, // Different port from bot
     });
 
-    logger.info(`API server listening on ${address}`);
+    logger.info('startServer', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.API_SERVER_LISTENING.replace('{{address}}', address));
 
     return server;
   } catch (err) {
-    logger.error('Failed to start API server', { error: err });
+    logger.error('startServer', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.API_SERVER_FAILED_TO_START, err as Error, { error: (err as Error).message });
     process.exit(1);
   }
 }

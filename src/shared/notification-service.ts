@@ -1,6 +1,9 @@
 import { Telegraf } from 'telegraf';
 import { config } from './config.js';
-import { logger } from './logger.js';
+import { LoggerFactory } from './layer-logger.js';
+import { LOG_MESSAGES } from './logging-messages.js';
+
+const logger = LoggerFactory.external('notification-service');
 
 export interface NotificationBatch {
   userId: string;
@@ -85,7 +88,7 @@ export class NotificationService {
           this.metrics.recordRetry(type);
         }
 
-        logger.info('Notification sent', {
+        logger.info('sendMessage', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.NOTIFICATION_SERVICE_SENT, {
           chatId,
           type,
           attempt: attempt + 1,
@@ -98,7 +101,7 @@ export class NotificationService {
 
         // Анализ типа ошибки
         if (this.isPermanentError(error)) {
-          logger.error('Permanent notification error', {
+          logger.error('sendMessage', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.NOTIFICATION_SERVICE_PERMANENT_ERROR, error, {
             chatId,
             type,
             error: error.message
@@ -106,7 +109,7 @@ export class NotificationService {
           throw error; // Не ретраим permanent ошибки
         }
 
-        logger.warn('Temporary notification error', {
+        logger.warn('sendMessage', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.NOTIFICATION_SERVICE_TEMPORARY_ERROR, {
           chatId,
           type,
           attempt: attempt + 1,

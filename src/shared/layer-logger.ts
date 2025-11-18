@@ -386,6 +386,12 @@ export const crossCuttingLogger = new LayerLogger(
   'cross-cutting'
 );
 
+// Логгер для операций запуска и завершения приложения (bootstrap)
+export const startupLogger = new LayerLogger(
+  ArchitectureLayer.CROSS_CUTTING,
+  'bootstrap'
+);
+
 /**
  * Специализированная фабрика логгеров для компонентов
  */

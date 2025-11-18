@@ -1,7 +1,10 @@
 import { Telegraf } from 'telegraf';
 import { config } from './config.js';
-import { logger } from './logger.js';
+import { LoggerFactory } from './layer-logger.js';
+import { LOG_MESSAGES } from './logging-messages.js';
 import { rateLimiter } from './rate-limiter.js';
+
+const logger = LoggerFactory.external('enhanced-notification-service');
 import { idempotencyService } from './idempotency-service.js';
 import { userPreferencesService } from './user-preferences-service.js';
 import { NotificationTracker } from './notification-service.js';
@@ -35,7 +38,7 @@ export class EnhancedNotificationService {
       // 1. Check user preferences
       const isAllowed = await userPreferencesService.isAllowed(userId, type);
       if (!isAllowed) {
-        logger.info('Notification blocked by user preferences', { userId, type });
+        logger.info('sendNotification', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.ENHANCED_NOTIFICATION_SERVICE_BLOCKED_BY_PREFERENCES, { userId, type });
         return { sent: false, reason: 'user_preferences' };
       }
 
@@ -48,7 +51,7 @@ export class EnhancedNotificationService {
           this.getCooldownForType(type)
         );
         if (!canSend) {
-          logger.info('Notification blocked by idempotency', { userId, gameId, type });
+          logger.info('sendNotification', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.ENHANCED_NOTIFICATION_SERVICE_BLOCKED_BY_IDEMPOTENCY, { userId, gameId, type });
           return { sent: false, reason: 'idempotency' };
         }
       }
@@ -56,7 +59,7 @@ export class EnhancedNotificationService {
       // 3. Check rate limit
       const canSendRate = await rateLimiter.checkTelegramQuota();
       if (!canSendRate) {
-        logger.warn('Notification blocked by rate limit', { userId, type });
+        logger.warn('sendNotification', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.ENHANCED_NOTIFICATION_SERVICE_BLOCKED_BY_RATE_LIMIT, { userId, type });
         return { sent: false, reason: 'rate_limit' };
       }
 
@@ -66,11 +69,11 @@ export class EnhancedNotificationService {
       // 5. Consume rate limit quota
       await rateLimiter.consumeTelegramQuota();
 
-      logger.info('Notification sent successfully', { userId, type, gameId });
+      logger.info('sendNotification', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.ENHANCED_NOTIFICATION_SERVICE_SENT_SUCCESSFULLY, { userId, type, gameId });
       return { sent: true };
 
     } catch (error) {
-      logger.error('Failed to send notification', {
+      logger.error('sendNotification', 'Failed to send notification', error as Error, {
         userId,
         type,
         gameId,
@@ -117,7 +120,7 @@ export class EnhancedNotificationService {
       }
     });
 
-    logger.info('Batch notification results', {
+    logger.info('sendBatch', 'Batch notification results', {
       total: notifications.length,
       successful: result.successful,
       failed: result.failed
@@ -158,7 +161,7 @@ export class EnhancedNotificationService {
           metrics.notificationsSent.increment();
         });
 
-        logger.info('Message sent', {
+        logger.info('sendMessage', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.ENHANCED_NOTIFICATION_SERVICE_SENT, {
           chatId,
           type,
           attempt: attempt + 1,
@@ -172,7 +175,7 @@ export class EnhancedNotificationService {
 
         // Analyze error type
         if (this.isPermanentError(error)) {
-          logger.error('Permanent notification error', {
+          logger.error('sendMessage', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.ENHANCED_NOTIFICATION_SERVICE_PERMANENT_ERROR, error, {
             chatId,
             type,
             error: error.message
@@ -180,7 +183,7 @@ export class EnhancedNotificationService {
           throw error; // Don't retry permanent errors
         }
 
-        logger.warn('Temporary notification error', {
+        logger.warn('sendMessage', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.ENHANCED_NOTIFICATION_SERVICE_TEMPORARY_ERROR, {
           chatId,
           type,
           attempt: attempt + 1,

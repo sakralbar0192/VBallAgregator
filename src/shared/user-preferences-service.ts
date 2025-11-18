@@ -1,5 +1,8 @@
 import { prisma } from '../infrastructure/prisma.js';
-import { logger } from './logger.js';
+import { LoggerFactory } from './layer-logger.js';
+import { LOG_MESSAGES } from './logging-messages.js';
+
+const logger = LoggerFactory.external('user-preferences-service');
 
 export interface NotificationPreferences {
   globalNotifications: boolean;
@@ -51,7 +54,7 @@ export class PrismaUserPreferencesService implements UserPreferencesService {
       });
       return mappedPrefs;
     } catch (error) {
-      logger.error('Failed to get user preferences', {
+      logger.error('isAllowed', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.USER_PREFERENCES_SERVICE_GET_FAILED, error as Error, {
         userId,
         error: error instanceof Error ? error.message : 'Unknown error'
       });
@@ -74,9 +77,9 @@ export class PrismaUserPreferencesService implements UserPreferencesService {
         }
       });
 
-      logger.info('User preferences updated', { userId, preferences });
+      logger.info('updatePreferences', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.USER_PREFERENCES_SERVICE_UPDATE_COMPLETED, { userId, preferences });
     } catch (error) {
-      logger.error('Failed to update user preferences', {
+      logger.error('updatePreferences', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.USER_PREFERENCES_SERVICE_UPDATE_FAILED, error as Error, {
         userId,
         preferences,
         error: error instanceof Error ? error.message : 'Unknown error'
@@ -115,14 +118,14 @@ export class PrismaUserPreferencesService implements UserPreferencesService {
           return prefs.organizerNotifications;
 
         default:
-          logger.warn('Unknown notification type for preferences check', {
+          logger.warn('isAllowed', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.USER_PREFERENCES_SERVICE_UNKNOWN_TYPE, {
             userId,
             notificationType
           });
           return true; // Allow unknown types by default
       }
     } catch (error) {
-      logger.warn('Preferences check failed, allowing notification', {
+      logger.warn('isAllowed', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.USER_PREFERENCES_SERVICE_CHECK_FAILED, {
         userId,
         notificationType,
         error: error instanceof Error ? error.message : 'Unknown error'

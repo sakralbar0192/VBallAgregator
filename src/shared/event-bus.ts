@@ -1,4 +1,6 @@
 import { DomainEvent as TypedDomainEvent } from './types.js';
+import { LoggerFactory } from './layer-logger.js';
+import { LOG_MESSAGES } from './logging-messages.js';
 
 export type DomainEvent = TypedDomainEvent & {
   occurredAt: Date;
@@ -31,7 +33,7 @@ export class EventBus {
   }
 
   async publish(event: DomainEvent): Promise<void> {
-    logger.info('Publishing event via EventBus', { eventType: event.type, eventId: event.id });
+    logger.info('publish', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.EVENT_BUS_PUBLISHING, { eventType: event.type, eventId: event.id });
     const handlers = this.handlers.get(event.type) || [];
 
     console.log('handlers', handlers)
@@ -43,7 +45,7 @@ export class EventBus {
     // Проверяем неуспешную обработку
     const failures = results.filter(r => r.status === 'rejected');
     if (failures.length > 0) {
-      logger.error('Event processing failures', {
+      logger.error('publish', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.EVENT_BUS_PROCESSING_FAILURES, new Error('Event processing failed'), {
         eventType: event.type,
         failures: failures.length,
         totalHandlers: handlers.length
@@ -60,7 +62,7 @@ export class EventBus {
         await handler.handle(event);
         return;
       } catch (error) {
-        logger.warn('Event handler failed', {
+        logger.warn('handleEvent', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.EVENT_BUS_HANDLER_FAILED, {
           eventType: event.type,
           attempt: attempt + 1,
           error: error instanceof Error ? error.message : 'Unknown error'
@@ -86,5 +88,4 @@ export class EventBus {
   }
 }
 
-// Импорт logger для использования в EventBus
-import { logger } from './logger.js';
+const logger = LoggerFactory.external('event-bus');

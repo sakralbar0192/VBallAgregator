@@ -48,7 +48,7 @@ jobs:
       run: npm test
       env:
         DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
-        TELEGRAM_BOT_TOKEN: test_token
+        TELEGRAM_BOT_TOKEN: 8291994865:AAE87OpiwRMb5hkVnGZuhjSyEFevzw2hjvY
 
     - name: Run linter
       run: npm run lint

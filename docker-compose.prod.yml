@@ -1,0 +1,238 @@
+version: '3.8'
+
+# ============================================================================
+# VBallAgregator Production Docker Compose Configuration
+# ============================================================================
+# ВАЖНО: Используйте этот файл только для production окружения
+# Для разработки используйте docker-compose.yml
+# ============================================================================
+
+services:
+  # ============================================================================
+  # PostgreSQL Database
+  # ============================================================================
+  db:
+    image: postgres:15-alpine
+    container_name: vball_db_prod
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-vball_app}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-CHANGE_ME}
+      POSTGRES_DB: ${DB_NAME:-vball_prod}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-vball_app} -d ${DB_NAME:-vball_prod}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - vball_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # ============================================================================
+  # Redis Cache
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: vball_redis_prod
+    restart: always
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --requirepass ${REDIS_PASSWORD:-CHANGE_ME}
+      --timeout 300
+      --tcp-keepalive 60
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - vball_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # ============================================================================
+  # Main Application
+  # ============================================================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NODE_ENV: production
+    container_name: vball_app_prod
+    restart: always
+    env_file: .env.prod
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${DB_USER:-vball_app}:${DB_PASSWORD:-CHANGE_ME}@db:5432/${DB_NAME:-vball_prod}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-CHANGE_ME}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_WEBHOOK_URL: ${TELEGRAM_WEBHOOK_URL}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET}
+      API_BASE_URL: ${API_BASE_URL}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_FORMAT: json
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./logs:/opt/vball-aggregator/logs
+      - ./backups:/opt/vball-aggregator/backups
+    networks:
+      - vball_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+        labels: "service=vball-app"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+  # ============================================================================
+  # Nginx Reverse Proxy
+  # ============================================================================
+  nginx:
+    image: nginx:alpine
+    container_name: vball_nginx_prod
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./certs:/etc/nginx/certs:ro
+      - ./nginx/html:/usr/share/nginx/html:ro
+    depends_on:
+      - app
+    networks:
+      - vball_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+# ============================================================================
+# Networks
+# ============================================================================
+networks:
+  vball_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# ============================================================================
+# Volumes
+# ============================================================================
+volumes:
+  postgres_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/vball-aggregator/data/postgres
+  redis_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/vball-aggregator/data/redis
+
+# ============================================================================
+# NOTES FOR PRODUCTION DEPLOYMENT
+# ============================================================================
+# 1. Убедитесь, что все переменные окружения установлены в .env.prod
+# 2. Создайте необходимые директории:
+#    mkdir -p /opt/vball-aggregator/{data/postgres,data/redis,logs,backups,certs}
+# 3. Установите правильные permissions:
+#    chmod 600 .env.prod
+#    chmod 755 /opt/vball-aggregator/{data,logs,backups}
+# 4. Скопируйте SSL сертификаты в ./certs/
+# 5. Настройте Nginx конфигурацию в ./nginx/
+# 6. Запустите контейнеры:
+#    docker-compose -f docker-compose.prod.yml up -d
+# 7. Выполните миграции БД:
+#    docker-compose -f docker-compose.prod.yml exec app npm run prisma:migrate
+# 8. Проверьте здоровье:
+#    docker-compose -f docker-compose.prod.yml ps
+# 9. Проверьте логи:
+#    docker-compose -f docker-compose.prod.yml logs -f app
+# 10. Настройте мониторинг и алерты

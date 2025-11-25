@@ -1,0 +1,236 @@
+# ============================================================================
+# Prometheus Alert Rules for VBallAgregator
+# ============================================================================
+
+groups:
+  - name: vball_application
+    interval: 30s
+    rules:
+      # ====================================================================
+      # Application Health Alerts
+      # ====================================================================
+      - alert: ApplicationDown
+        expr: up{job="vball-app"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: vball-app
+        annotations:
+          summary: "VBallAgregator application is down"
+          description: "VBallAgregator application has been down for more than 2 minutes"
+
+      - alert: HighErrorRate
+        expr: |
+          (sum(rate(http_requests_total{job="vball-app",status=~"5.."}[5m])) /
+           sum(rate(http_requests_total{job="vball-app"}[5m]))) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: vball-app
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is above 5% for the last 5 minutes"
+
+      - alert: HighResponseTime
+        expr: |
+          histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job="vball-app"}[5m])) by (le)) > 2
+        for: 5m
+        labels:
+          severity: warning
+          service: vball-app
+        annotations:
+          summary: "High response time detected"
+          description: "95th percentile response time is above 2 seconds"
+
+  - name: database
+    interval: 30s
+    rules:
+      # ====================================================================
+      # Database Alerts
+      # ====================================================================
+      - alert: PostgreSQLDown
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: postgres
+        annotations:
+          summary: "PostgreSQL database is down"
+          description: "PostgreSQL database has been unreachable for more than 1 minute"
+
+      - alert: PostgreSQLHighConnections
+        expr: |
+          pg_stat_activity_count{job="postgres"} > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: postgres
+        annotations:
+          summary: "High number of database connections"
+          description: "Database has {{ $value }} active connections (threshold: 80)"
+
+      - alert: PostgreSQLSlowQueries
+        expr: |
+          pg_slow_queries{job="postgres"} > 10
+        for: 5m
+        labels:
+          severity: warning
+          service: postgres
+        annotations:
+          summary: "High number of slow queries"
+          description: "Database has {{ $value }} slow queries in the last 5 minutes"
+
+      - alert: PostgreSQLDiskUsage
+        expr: |
+          (pg_database_size_bytes{job="postgres"} / 1024 / 1024 / 1024) > 50
+        for: 5m
+        labels:
+          severity: warning
+          service: postgres
+        annotations:
+          summary: "High database disk usage"
+          description: "Database size is {{ $value }}GB (threshold: 50GB)"
+
+  - name: redis
+    interval: 30s
+    rules:
+      # ====================================================================
+      # Redis Alerts
+      # ====================================================================
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: redis
+        annotations:
+          summary: "Redis cache is down"
+          description: "Redis cache has been unreachable for more than 1 minute"
+
+      - alert: RedisHighMemoryUsage
+        expr: |
+          (redis_memory_used_bytes{job="redis"} / redis_memory_max_bytes{job="redis"}) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          service: redis
+        annotations:
+          summary: "High Redis memory usage"
+          description: "Redis memory usage is above 80% ({{ $value | humanizePercentage }})"
+
+      - alert: RedisHighEvictions
+        expr: |
+          rate(redis_evicted_keys_total{job="redis"}[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: redis
+        annotations:
+          summary: "Redis is evicting keys"
+          description: "Redis is evicting keys due to memory pressure"
+
+  - name: system
+    interval: 30s
+    rules:
+      # ====================================================================
+      # System Resource Alerts
+      # ====================================================================
+      - alert: HighCPUUsage
+        expr: |
+          (100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)) > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage is above 80% on {{ $labels.instance }}"
+
+      - alert: HighMemoryUsage
+        expr: |
+          (1 - (node_memory_MemAvailable_bytes{job="node"} / node_memory_MemTotal_bytes{job="node"})) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "High memory usage detected"
+          description: "Memory usage is above 80% on {{ $labels.instance }}"
+
+      - alert: LowDiskSpace
+        expr: |
+          (node_filesystem_avail_bytes{fstype!~"tmpfs|fuse.lxcfs|squashfs|vfat"} / node_filesystem_size_bytes) < 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "Low disk space detected"
+          description: "Disk {{ $labels.device }} has less than 10% free space"
+
+      - alert: DiskWillFillIn24h
+        expr: |
+          predict_linear(node_filesystem_avail_bytes{fstype!~"tmpfs|fuse.lxcfs|squashfs|vfat"}[1h], 24*3600) < 0
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "Disk will fill in 24 hours"
+          description: "Disk {{ $labels.device }} will be full in approximately 24 hours"
+
+  - name: nginx
+    interval: 30s
+    rules:
+      # ====================================================================
+      # Nginx Alerts
+      # ====================================================================
+      - alert: NginxDown
+        expr: up{job="nginx"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: nginx
+        annotations:
+          summary: "Nginx reverse proxy is down"
+          description: "Nginx has been unreachable for more than 1 minute"
+
+      - alert: NginxHighErrorRate
+        expr: |
+          (sum(rate(nginx_http_requests_total{status=~"5.."}[5m])) /
+           sum(rate(nginx_http_requests_total[5m]))) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: nginx
+        annotations:
+          summary: "High error rate in Nginx"
+          description: "Nginx error rate is above 5% for the last 5 minutes"
+
+  - name: deployment
+    interval: 30s
+    rules:
+      # ====================================================================
+      # Deployment and Container Alerts
+      # ====================================================================
+      - alert: ContainerRestartingFrequently
+        expr: |
+          rate(container_last_seen{job="docker"}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: docker
+        annotations:
+          summary: "Container is restarting frequently"
+          description: "Container {{ $labels.name }} is restarting more than once per minute"
+
+      - alert: OutOfMemory
+        expr: |
+          container_memory_usage_bytes{job="docker"} / container_spec_memory_limit_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          service: docker
+        annotations:
+          summary: "Container is running out of memory"
+          description: "Container {{ $labels.name }} is using more than 90% of allocated memory"

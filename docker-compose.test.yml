@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  # Database only for local testing
+  db:
+    image: postgres:15-alpine
+    container_name: vball_db_test
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vball_app
+      POSTGRES_PASSWORD: 2Th6VpFdMVY08jvJrPFwAZF0
+      POSTGRES_DB: vball_prod
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vball_app -d vball_prod"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # Redis for local testing
+  redis:
+    image: redis:7-alpine
+    container_name: vball_redis_test
+    restart: unless-stopped
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --requirepass Dvpo9QfEWplMStlwXvbQtgSG
+      --timeout 300
+      --tcp-keepalive 60
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # Main application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NODE_ENV: production
+    container_name: vball_app_test
+    restart: unless-stopped
+    env_file: .env.prod-local
+    environment:
+      DATABASE_URL: postgresql://vball_app:2Th6VpFdMVY08jvJrPFwAZF0@db:5432/vball_prod
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: Dvpo9QfEWplMStlwXvbQtgSG
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./logs:/opt/vball-aggregator/logs
+      - ./backups:/opt/vball-aggregator/backups
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  postgres_data:
+  redis_data:

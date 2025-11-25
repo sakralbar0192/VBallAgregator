@@ -27,11 +27,9 @@ COPY . .
 ARG DATABASE_URL="postgresql://user:pass@localhost:5432/db?schema=public"
 ENV DATABASE_URL=$DATABASE_URL
 
-# 5) Явно генерируем Prisma уже после установки (тут можно настроить прокси/зеркало)
-# Если у вас есть проблемы с доступом к CDN Prisma —
-# используйте PRISMA_ENGINES_MIRROR, указывая собственное зеркало/S3.
-# ENV PRISMA_ENGINES_MIRROR=https://my-cdn.example.com/prisma
-RUN npx prisma generate
+# 5) Явно генерируем Prisma уже после установки
+# Используем зеркало для обхода проблем с CDN
+RUN npm config set fetch-retry-mintimeout 20000 && npm config set fetch-retry-maxtimeout 120000 && npx prisma generate
 
 # 6) Сборка TS
 RUN npm run build
@@ -42,6 +40,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/prisma ./prisma
 COPY package.json ./
 
 CMD ["node", "dist/index.js"]

@@ -1,5 +1,7 @@
-# 1) Сборочный слой на glibc
-FROM node:20-bookworm-slim AS builder
+# syntax=docker/dockerfile:1
+# 1) Базовый слой: установка зависимостей и генерация Prisma Client
+FROM node:20-bookworm-slim AS base
+
 WORKDIR /app
 
 # Полезные системные пакеты
@@ -7,40 +9,41 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   python3 make g++ ca-certificates curl git \
   && rm -rf /var/lib/apt/lists/*
 
-# 2) Переменные, отключающие «проблемные» шаги на этапе install
-# - msgpackr-extract не будет собирать нативный аддон
-# - Prisma не будет триггерить postinstall (скачивание движков)
+# Переменные, отключающие «проблемные» шаги
 ENV MSGPACKR_EXTRACT_SKIP_NATIVE=1 \
     PRISMA_SKIP_POSTINSTALL_GENERATE=1 \
     npm_config_loglevel=notice
 
-# 3) Установка зависимостей (без запуска скриптов других пакетов)
-COPY package.json package-lock.json* pnpm-lock.yaml* yarn.lock* ./
-# Выберите один менеджер; пример для npm:
+# 2) Установка зависимостей (без запуска скриптов)
+COPY package.json package-lock.json* ./
 RUN npm ci --ignore-scripts
 
-# 4) Дальше — исходники проекта
-COPY . .
+# 3) Генерация Prisma Client (кешируется отдельно)
+COPY prisma ./prisma
 
-# Заглушка для генерации Prisma Client (меняйте на свой тип БД)
-# Для Postgres:
+# Заглушка для генерации Prisma Client
 ARG DATABASE_URL="postgresql://user:pass@localhost:5432/db?schema=public"
 ENV DATABASE_URL=$DATABASE_URL
 
-# 5) Явно генерируем Prisma уже после установки
-# Используем зеркало для обхода проблем с CDN
-RUN npm config set fetch-retry-mintimeout 20000 && npm config set fetch-retry-maxtimeout 120000 && npx prisma generate
+# Увеличиваем таймауты для стабильности
+RUN npm config set fetch-retry-mintimeout 20000 \
+    && npm config set fetch-retry-maxtimeout 120000 \
+    && npx prisma generate
 
-# 6) Сборка TS
+# 4) Сборка приложения
+COPY . .
 RUN npm run build
 
-# 7) Рантайм слой
+# 5) Рантайм слой
 FROM node:20-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/prisma ./prisma
+
+COPY --from=base /app/node_modules ./node_modules
+COPY --from=base /app/dist ./dist
+COPY --from=base /app/prisma ./prisma
 COPY package.json ./
+
+EXPOSE 3000
 
 CMD ["node", "dist/index.js"]

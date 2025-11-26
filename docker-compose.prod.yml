@@ -95,11 +95,7 @@ services:
   # Main Application
   # ============================================================================
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        NODE_ENV: production
+    image: vball-app-prod:latest
     container_name: vball_app_prod
     restart: always
     env_file: .env.prod

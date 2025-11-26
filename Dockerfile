@@ -6,7 +6,7 @@ WORKDIR /app
 
 # Полезные системные пакеты
 RUN apt-get update && apt-get install -y --no-install-recommends \
-  python3 make g++ ca-certificates curl git \
+  python3 make g++ ca-certificates curl git openssl \
   && rm -rf /var/lib/apt/lists/*
 
 # Переменные, отключающие «проблемные» шаги
@@ -38,6 +38,10 @@ RUN npm run build
 FROM node:20-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openssl \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=base /app/node_modules ./node_modules
 COPY --from=base /app/dist ./dist

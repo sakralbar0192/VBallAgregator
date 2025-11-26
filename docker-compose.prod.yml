@@ -222,11 +222,11 @@ volumes:
 # 4. Скопируйте SSL сертификаты в ./certs/
 # 5. Настройте Nginx конфигурацию в ./nginx/
 # 6. Запустите контейнеры:
-#    docker-compose -f docker-compose.prod.yml up -d
+   #    docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
 # 7. Выполните миграции БД:
-#    docker-compose -f docker-compose.prod.yml exec app npm run prisma:migrate
+   #    docker compose -f docker-compose.prod.yml exec app npm run prisma:deploy
 # 8. Проверьте здоровье:
-#    docker-compose -f docker-compose.prod.yml ps
+   #    docker compose -f docker-compose.prod.yml ps
 # 9. Проверьте логи:
-#    docker-compose -f docker-compose.prod.yml logs -f app
+   #    docker compose -f docker-compose.prod.yml logs -f app
 # 10. Настройте мониторинг и алерты

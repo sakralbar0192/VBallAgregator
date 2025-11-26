@@ -25,11 +25,15 @@ COPY prisma ./prisma
 ARG DATABASE_URL="file:./dev.db"
 ENV DATABASE_URL=$DATABASE_URL
 
-# Генерация Prisma Client
-RUN npx prisma generate
-
 # Pre-download Prisma CLI engines (migration-engine, etc.) for offline use
-RUN npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > /dev/null || true
+RUN npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > /dev/null || \
+    npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > /dev/null || true
+
+# Генерация Prisma Client with retries for flaky networks
+RUN for i in {1..5}; do \
+      echo "Prisma generate attempt $$i/5"; \
+      npx prisma generate && break || sleep 10; \
+    done
 
 # 4) Сборка приложения
 COPY . .

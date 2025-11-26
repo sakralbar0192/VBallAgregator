@@ -22,16 +22,11 @@ RUN npm ci --ignore-scripts
 COPY prisma ./prisma
 
 # Заглушка для генерации Prisma Client
-ARG DATABASE_URL="postgresql://user:pass@localhost:5432/db?schema=public"
+ARG DATABASE_URL="file:./dev.db"
 ENV DATABASE_URL=$DATABASE_URL
 
-# Увеличиваем таймауты для стабильности
-RUN npm config set fetch-retry-mintimeout 20000 \
-    && npm config set fetch-retry-maxtimeout 300000 \
-    && npm config set fetch-retries 10 \
-    && for i in {1..5}; do \
-         npx prisma generate && break || sleep 30; \
-       done
+# Генерация Prisma Client
+RUN npx prisma generate
 
 # Pre-download Prisma CLI engines (migration-engine, etc.) for offline use
 RUN npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > /dev/null || true

@@ -37,7 +37,7 @@ export class LevelSelectionHandler extends BaseHandler {
 
       // Проверить, есть ли другие организаторы в сервисе (исключая самого пользователя)
       const organizers = await prisma.organizer.findMany();
-      const otherOrganizersCount = organizers.filter(org => org.userId !== user.id).length;
+      const otherOrganizersCount = organizers.filter((org: any) => org.userId !== user.id).length;
 
       if (otherOrganizersCount > 0) {
         await ctx.editMessageText('Отлично! Хочешь выбрать организаторов для приоритетных приглашений на игры?', {

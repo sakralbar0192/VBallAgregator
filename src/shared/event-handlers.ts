@@ -82,8 +82,8 @@ async function handleGameReminder24h(event: TypedDomainEvent) {
   }
 
   const notifications = game.registrations
-    .filter(reg => reg.user.telegramId)
-    .map(reg => ({
+    .filter((reg: any) => reg.user.telegramId)
+    .map((reg: any) => ({
       userId: reg.userId,
       chatId: reg.user.telegramId!,
       message: `⏰ Напоминание: игра завтра ${
@@ -131,8 +131,8 @@ async function handleGameReminder2h(event: TypedDomainEvent) {
   }
 
   const notifications = game.registrations
-    .filter(reg => reg.user.telegramId)
-    .map(reg => ({
+    .filter((reg: any) => reg.user.telegramId)
+    .map((reg: any) => ({
       userId: reg.userId,
       chatId: reg.user.telegramId!,
       message: `🚨 Через 2 часа игра!\n⏰ ${
@@ -186,8 +186,8 @@ async function handlePaymentReminder12h(event: TypedDomainEvent) {
   }
 
   const notifications = game.registrations
-    .filter(reg => reg.user.telegramId)
-    .map(reg => ({
+    .filter((reg: any) => reg.user.telegramId)
+    .map((reg: any) => ({
       userId: reg.userId,
       chatId: reg.user.telegramId!,
       message: `💰 Напоминание: оплата за игру ${game.id || ''}\n${getOrganizerName(game)}💳 Пожалуйста, произведите оплату`,
@@ -235,8 +235,8 @@ async function handlePaymentReminder24h(event: TypedDomainEvent) {
   }
 
   const notifications = game.registrations
-    .filter(reg => reg.user.telegramId)
-    .map(reg => ({
+    .filter((reg: any) => reg.user.telegramId)
+    .map((reg: any) => ({
       userId: reg.userId,
       chatId: reg.user.telegramId!,
       message: `⚠️ Последнее напоминание об оплате!\n💰 Игра ${game.id || ''}\n${getOrganizerName(game)}⏰ Просьба оплатить в ближайшее время`,
@@ -487,8 +487,8 @@ async function handlePlayerSelectedOrganizers(event: TypedDomainEvent) {
   const message = `👤 Новый запрос на связь!\nИгрок ${player.name} хочет присоединиться к вашим играм.`;
 
   const notifications = organizers
-    .filter(org => org.user?.telegramId)
-    .map(org => ({
+    .filter((org: any) => org.user?.telegramId)
+    .map((org: any) => ({
       userId: org.userId,
       chatId: org.user!.telegramId!,
       message,
@@ -726,7 +726,7 @@ async function handleGamePublishedForAll(event: TypedDomainEvent) {
     }
   });
 
-  const filteredUsers = suitableUsers.filter(user =>
+  const filteredUsers = suitableUsers.filter((user: any) =>
     user.telegramId !== null && !priorityPlayerIds.has(user.id)
   );
 
@@ -742,12 +742,12 @@ async function handleGamePublishedForAll(event: TypedDomainEvent) {
   }\n`;
 
   const notifications = filteredUsers
-    .filter(user => {
+    .filter((user: any) => {
       // Проверяем настройки уведомлений
       const prefs = (user as any).notificationPreferences;
       return prefs?.globalNotifications !== false;
     })
-    .map(user => ({
+    .map((user: any) => ({
       userId: user.id,
       chatId: user.telegramId!,
       message,

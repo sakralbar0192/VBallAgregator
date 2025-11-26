@@ -31,15 +31,15 @@ export class GamePaymentsDashboardQuery {
       throw new Error('Game not found or access denied');
     }
 
-    const players = game.registrations.map(reg => ({
+    const players = game.registrations.map((reg: any) => ({
       userId: reg.userId,
       name: reg.user.name,
       paymentStatus: reg.paymentStatus as 'paid' | 'unpaid',
       paymentMarkedAt: reg.paymentMarkedAt || undefined
     }));
 
-    const paidCount = players.filter(p => p.paymentStatus === 'paid').length;
-    const unpaidCount = players.filter(p => p.paymentStatus === 'unpaid').length;
+    const paidCount = players.filter((p: any) => p.paymentStatus === 'paid').length;
+    const unpaidCount = players.filter((p: any) => p.paymentStatus === 'unpaid').length;
 
     return {
       gameId: this.gameId,

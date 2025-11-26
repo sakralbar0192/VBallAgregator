@@ -303,7 +303,7 @@
       id: '',
       payload: {
         gameId,
-        unpaidRegistrations: game.registrations.map(r => ({
+        unpaidRegistrations: game.registrations.map((r: any) => ({
           userId: r.userId,
           telegramId: r.user.telegramId
         }))

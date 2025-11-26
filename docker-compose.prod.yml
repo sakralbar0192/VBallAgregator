@@ -58,7 +58,7 @@ services:
       --appendonly yes
       --appendfsync everysec
       --maxmemory 512mb
-      --maxmemory-policy allkeys-lru
+      --maxmemory-policy noeviction
       --requirepass ${REDIS_PASSWORD:-CHANGE_ME}
       --timeout 300
       --tcp-keepalive 60
@@ -115,7 +115,7 @@ services:
       redis:
         condition: service_healthy
     ports:
-      - "3000:3000"
+      - "80:3000"
     volumes:
       - ./logs:/opt/vball-aggregator/logs
       - ./backups:/opt/vball-aggregator/backups
@@ -143,45 +143,6 @@ services:
     #       cpus: '1'
     #       memory: 1G
 
-  # ============================================================================
-  # Nginx Reverse Proxy
-  # ============================================================================
-  nginx:
-    image: nginx:alpine
-    container_name: vball_nginx_prod
-    restart: always
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./certs:/etc/nginx/certs:ro
-      - ./nginx/html:/usr/share/nginx/html:ro
-    depends_on:
-      - app
-    networks:
-      - vball_network
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    # Resource limits
-    # deploy:
-    #   resources:
-    #     limits:
-    #       cpus: '0.5'
-    #       memory: 256M
-    #     reservations:
-    #       cpus: '0.25'
-    #       memory: 128M
 
 # ============================================================================
 # Networks

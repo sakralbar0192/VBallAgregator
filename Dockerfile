@@ -27,8 +27,14 @@ ENV DATABASE_URL=$DATABASE_URL
 
 # Увеличиваем таймауты для стабильности
 RUN npm config set fetch-retry-mintimeout 20000 \
-    && npm config set fetch-retry-maxtimeout 120000 \
-    && npx prisma generate
+    && npm config set fetch-retry-maxtimeout 300000 \
+    && npm config set fetch-retries 10 \
+    && for i in {1..5}; do \
+         npx prisma generate && break || sleep 30; \
+       done
+
+# Pre-download Prisma CLI engines (migration-engine, etc.) for offline use
+RUN npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > /dev/null || true
 
 # 4) Сборка приложения
 COPY . .
@@ -44,6 +50,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=base /app/node_modules ./node_modules
+COPY --from=base /root/.cache/prisma /root/.cache/prisma
 COPY --from=base /app/dist ./dist
 COPY --from=base /app/prisma ./prisma
 COPY package.json ./

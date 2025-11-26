@@ -49,7 +49,7 @@ docker compose -f docker-compose.prod.yml logs -f app
 
 ### Шаг 4: Миграции БД (при необходимости)
 ```bash
-docker compose -f docker-compose.prod.yml exec app npx prisma migrate deploy
+docker compose -f docker-compose.prod.yml exec app npm run prisma:deploy
 ```
 
 ## ⚡ Преимущества нового подхода

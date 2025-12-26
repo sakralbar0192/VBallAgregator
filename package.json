@@ -12,7 +12,7 @@
     "prisma:generate": "node -r dotenv/config ./node_modules/.bin/prisma generate",
     "prisma:migrate": "node -r dotenv/config ./node_modules/.bin/prisma migrate dev",
     "prisma:deploy": "node -r dotenv/config ./node_modules/.bin/prisma migrate deploy",
-    "prisma:studio": "cross-env-shell \"DATABASE_URL=postgresql://user:password@localhost:5434/vball_dev\" prisma studio",
+    "prisma:studio": "node -r dotenv/config ./node_modules/.bin/prisma studio",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "test": "node -r dotenv/config --experimental-vm-modules ./node_modules/.bin/jest",

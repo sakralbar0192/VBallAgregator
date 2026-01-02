@@ -4,6 +4,7 @@ import { registerUser, registerOrganizer } from '../../application/use-cases.js'
 import { LoggerFactory } from '../../shared/layer-logger.js';
 import { LOG_MESSAGES } from '../../shared/logging-messages.js';
 import { KeyboardBuilder } from '../common/keyboard-builder.js';
+import { sessionManager } from '../../shared/session-manager.js';
 
 /**
  * Обработчик регистрации пользователей
@@ -29,6 +30,11 @@ export class RegistrationHandler extends BaseHandler {
       RegistrationHandler.logger.entry('registerUser', { telegramId, name, correlationId });
       const result = await registerUser(telegramId, name);
       RegistrationHandler.logger.exit('registerUser', { userId: result.userId, correlationId });
+
+      // Create a new session for the user
+      const session = sessionManager.create(result.userId.toString());
+      session.data.telegramId = telegramId;
+      session.data.name = name;
 
       await ctx.reply('Привет! Я бот для организации волейбольных игр. Выбери свою роль:', {
         reply_markup: {
@@ -56,8 +62,14 @@ export class RegistrationHandler extends BaseHandler {
 
     try {
       const user = await RegistrationHandler.requireUser(ctx);
+      const session = sessionManager.getCurrentSession();
+
+      if (!session) {
+        throw new Error('No active session found');
+      }
 
       await registerOrganizer(user.id, ctx.from!.first_name);
+      session.data.role = 'organizer';
 
       await ctx.editMessageText('Ты зарегистрирован как организатор! Создай игру командой /newgame');
 

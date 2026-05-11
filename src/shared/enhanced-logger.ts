@@ -182,10 +182,16 @@ export class EnhancedConsoleLogger implements Logger {
    */
   private formatLog(entry: StructuredLog): string {
     const context = entry.context ? ` | Context: ${JSON.stringify(entry.context)}` : '';
-    const metadata = entry.metadata ? ` | Meta: ${this.serializeMetadata(entry.metadata)}` : '';
+    const metaObj = entry.metadata ? this.serializeMetadata(entry.metadata) : null;
+    const metadata =
+      metaObj && Object.keys(metaObj).length > 0
+        ? ` | Meta: ${JSON.stringify(metaObj)}`
+        : '';
     const executionTime = entry.executionTimeMs ? ` | Duration: ${entry.executionTimeMs}ms` : '';
+    const stack =
+      entry.level === 'ERROR' && entry.stackTrace ? `\n${entry.stackTrace}` : '';
 
-    return `[${entry.level}] ${entry.timestamp} [${entry.layer}] ${entry.component}.${entry.operation}: ${entry.message}${context}${metadata}${executionTime}`;
+    return `[${entry.level}] ${entry.timestamp} [${entry.layer}] ${entry.component}.${entry.operation}: ${entry.message}${context}${metadata}${executionTime}${stack}`;
   }
 
   /**

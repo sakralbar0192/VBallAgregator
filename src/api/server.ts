@@ -1,57 +1,55 @@
 import Fastify from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { healthRoutes } from './health-endpoint.js';
 import { LoggerFactory } from '../shared/layer-logger.js';
 import { LOG_MESSAGES } from '../shared/logging-messages.js';
+import type { HealthCheckService } from '../infrastructure/health.js';
 
 const logger = LoggerFactory.external('api-server');
 
-export async function createServer() {
+export function getApiPort(): number {
+  const raw = process.env.API_PORT ?? '3001';
+  const p = parseInt(raw, 10);
+  return Number.isFinite(p) && p > 0 ? p : 3001;
+}
+
+export async function createServer(options: {
+  healthCheckService: HealthCheckService;
+}): Promise<FastifyInstance> {
   const fastify = Fastify({
     logger: true,
-    // Add basic configuration
     maxParamLength: 500,
   });
 
-  // Register health check routes
-  await fastify.register(healthRoutes);
-
-  // Add root route
-  fastify.get('/', async (request, reply) => {
-    return {
-      name: 'VBallAgregator API',
-      version: '1.0.0',
-      status: 'running',
-      timestamp: new Date().toISOString()
-    };
+  await fastify.register(healthRoutes, {
+    healthCheckService: options.healthCheckService,
   });
 
-  // Graceful shutdown
-  const closeGracefully = async (signal: string) => {
-    logger.info('closeGracefully', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.API_SERVER_SIGNAL_RECEIVED.replace('{{signal}}', signal));
-    await fastify.close();
-    process.exit(0);
-  };
-
-  process.on('SIGINT', () => closeGracefully('SIGINT'));
-  process.on('SIGTERM', () => closeGracefully('SIGTERM'));
+  fastify.get('/', async () => ({
+    name: 'VBallAgregator API',
+    version: '1.0.0',
+    status: 'running',
+    timestamp: new Date().toISOString(),
+  }));
 
   return fastify;
 }
 
-export async function startServer() {
-  try {
-    const server = await createServer();
+export async function startApiServer(options: {
+  healthCheckService: HealthCheckService;
+}): Promise<FastifyInstance> {
+  const server = await createServer(options);
+  const port = getApiPort();
 
-    const address = await server.listen({
-      host: '0.0.0.0',
-      port: 3001, // Different port from bot
-    });
+  const address = await server.listen({
+    host: '0.0.0.0',
+    port,
+  });
 
-    logger.info('startServer', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.API_SERVER_LISTENING.replace('{{address}}', address));
+  logger.info(
+    'startApiServer',
+    LOG_MESSAGES.INFRASTRUCTURE_SERVICES.API_SERVER_LISTENING.replace('{{address}}', address)
+  );
 
-    return server;
-  } catch (err) {
-    logger.error('startServer', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.API_SERVER_FAILED_TO_START, err as Error, { error: (err as Error).message });
-    process.exit(1);
-  }
+  return server;
 }

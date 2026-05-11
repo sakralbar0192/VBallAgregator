@@ -59,9 +59,9 @@
 ```bash
 # Необходимо установить:
 - Node.js 20+
-- Bun (рекомендуется) или npm
-- Docker & docker-compose
-- PostgreSQL (через Docker)
+- npm (как в CI) или bun
+- Docker / Docker Compose v2
+- PostgreSQL и Redis (через Docker)
 ```
 
 ### 2. Установка и запуск
@@ -71,30 +71,29 @@ git clone git@github.com:sakralbar0192/VBallAgregator.git
 cd VBallAgregator
 
 # Установка зависимостей
-bun install
+npm ci
 
-# Запуск инфраструктуры (PostgreSQL, Redis)
-docker-compose up -d
+# Запуск инфраструктуры (PostgreSQL, Redis; БД на localhost:5434, имя vball_db)
+docker compose up -d db redis
 
 # Настройка переменных окружения
 cp .env.example .env
-# Отредактируйте .env файл
+# Укажите TELEGRAM_BOT_TOKEN; при необходимости API_PORT (по умолчанию 3001)
 
 # Настройка базы данных
-bun run prisma:migrate
-bun run prisma:generate
+npm run prisma:migrate
+npm run prisma:generate
 
-# Запуск приложения
-bun run dev
+# Запуск приложения (Telegram-бот + HTTP API с /health)
+npm run dev
 ```
 
 ### 3. Проверка работоспособности
 ```bash
-# Проверка health endpoint
-curl http://localhost:3001/health
+# Проверка health endpoint (порт из API_PORT, по умолчанию 3001)
+curl "http://localhost:${API_PORT:-3001}/health"
 
-# Проверка логов
-tail -f logs/app.log
+# Логи — в stdout процесса (отдельный файл logs/app.log не используется)
 ```
 
 ## 🎮 Основные пользовательские сценарии
@@ -118,13 +117,13 @@ tail -f logs/app.log
 
 | Команда | Назначение |
 |---------|------------|
-| `bun run dev` | Запуск в режиме разработки |
-| `bun run build` | Сборка TypeScript |
-| `bun run start` | Запуск production версии |
-| `bun run prisma:migrate` | Применение миграций БД |
-| `bun run prisma:studio` | GUI для работы с БД |
-| `bun run test` | Запуск тестов |
-| `bun run test:integration` | Интеграционные тесты |
+| `npm run dev` | Запуск в режиме разработки |
+| `npm run build` | Сборка TypeScript |
+| `npm run start` | Запуск production версии |
+| `npm run prisma:migrate` | Применение миграций БД |
+| `npm run prisma:studio` | GUI для работы с БД |
+| `npm test` | Запуск тестов (последовательно, общая БД) |
+| `npm run test:integration` | Интеграционные тесты |
 
 ## 📡 API Endpoints
 
@@ -142,14 +141,13 @@ POST /webhook/{token} - прием сообщений от Telegram
 
 ### Просмотр логов:
 ```bash
-# Логи приложения
-tail -f logs/app.log
+# Логи приложения — в консоли, где запущен npm run dev
 
 # Логи базы данных
-docker-compose logs db
+docker compose logs -f db
 
 # Логи Redis
-docker-compose logs redis
+docker compose logs -f redis
 ```
 
 ### Включение DEBUG режима:
@@ -168,7 +166,7 @@ NODE_ENV=development
 
 ### Проверка состояния системы:
 ```bash
-curl http://localhost:3001/health
+curl "http://localhost:${API_PORT:-3001}/health"
 ```
 
 ### Ожидаемый ответ:
@@ -200,8 +198,8 @@ echo "TELEGRAM_BOT_TOKEN=your_bot_token" >> .env
 
 ### Проблема: "Port already in use"
 ```bash
-# Решение: Остановить процессы на порту 3000
-lsof -ti:3000 | xargs kill -9
+# Решение: освободить порт API (по умолчанию 3001) или сменить API_PORT в .env
+lsof -ti:3001 | xargs kill -9
 ```
 
 ## 🎯 Следующие шаги
@@ -212,7 +210,7 @@ lsof -ti:3000 | xargs kill -9
 
 ### Для изучения разработки:
 - [👨‍💻 Developer Guide](developer-guide.md)
-- [🔧 Стандарты кодирования](development/coding-standards.md)
+- [🔧 Стандарты кодирования](../development/coding-standards.md)
 
 ### Для понимания бизнес-логики:
 - [📱 Пользовательские сценарии](../business/user-scenarios.md)
@@ -221,8 +219,8 @@ lsof -ti:3000 | xargs kill -9
 ## 💡 Полезные ссылки
 
 - **Полная техническая документация**: [Developer Guide](developer-guide.md)
-- **Архитектурные решения**: [Architecture Overview](architecture/overview.md)
-- **Стандарты разработки**: [Coding Standards](development/coding-standards.md)
+- **Архитектурные решения**: [Architecture Overview](../architecture/overview.md)
+- **Стандарты разработки**: [Coding Standards](../development/coding-standards.md)
 - **Устранение проблем**: [Troubleshooting](../reference/troubleshooting.md)
 
 ---
@@ -232,6 +230,6 @@ lsof -ti:3000 | xargs kill -9
 
 ---
 
-**Последнее обновление:** 2025-11-24 07:52  
-**Версия:** 1.0  
-**Статус:** Готово к использованию ✅
+**Последнее обновление:** 2026-05-11  
+**Версия:** 1.1  
+**Статус:** Готово к использованию

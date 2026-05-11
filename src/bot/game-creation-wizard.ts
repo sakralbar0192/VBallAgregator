@@ -312,6 +312,11 @@ export class GameCreationWizard {
   static clearSession(telegramId: number): void {
     GameCreationWizard.sessions.delete(telegramId);
   }
+
+  /** Сброс всех сессий мастера — только для тестов */
+  static resetSessionsForTests(): void {
+    GameCreationWizard.sessions.clear();
+  }
 }
 
 interface GameCreationSession {

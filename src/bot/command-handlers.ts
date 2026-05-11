@@ -14,6 +14,11 @@ const GameIdSchema = z.string().uuid();
 export class CommandHandlers {
   static organizerSelectionSessions = new Map<number, { session: Set<string>, timestamp: number }>();
 
+  /** Только для тестов */
+  static resetOrganizerSessionsForTests(): void {
+    CommandHandlers.organizerSelectionSessions.clear();
+  }
+
   // Очистка сессий по таймауту (30 минут)
   private static cleanupSessions(): void {
     const now = Date.now();
@@ -257,7 +262,7 @@ export class CommandHandlers {
     const isOrganizer = await prisma.organizer.findUnique({ where: { userId: user.id } });
 
     let message = '';
-        let buttons: InlineKeyboardButton[][] = [];
+        const buttons: InlineKeyboardButton[][] = [];
     
         // Получить все регистрации пользователя как игрока
         const { GetUserRegistrationsQuery } = await import('../application/queries/GetUserRegistrationsQuery.js');

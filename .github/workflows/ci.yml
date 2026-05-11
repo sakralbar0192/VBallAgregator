@@ -37,7 +37,9 @@ jobs:
       run: npm ci
 
     - name: Generate Prisma client
-      run: npx prisma generate
+      run: npx prisma generate && node scripts/ensure-prisma-client-cjs.mjs
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
 
     - name: Run database migrations
       run: npx prisma migrate deploy
@@ -48,7 +50,9 @@ jobs:
       run: npm test
       env:
         DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
-        TELEGRAM_BOT_TOKEN: 8291994865:AAE87OpiwRMb5hkVnGZuhjSyEFevzw2hjvY
+        # Не настоящий бот; тесты мокают Telegram. Для боевого деплоя используйте секреты окружения.
+        TELEGRAM_BOT_TOKEN: '000000000:CI_DUMMY_TOKEN_NOT_FOR_PRODUCTION_USE'
+        API_PORT: '3001'
 
     - name: Run linter
       run: npm run lint

@@ -32,17 +32,19 @@ services:
     build: .
     env_file: .env
     environment:
-      DATABASE_URL: ${DATABASE_URL}
-      REDIS_HOST: ${REDIS_HOST}
-      REDIS_PORT: ${REDIS_PORT}
+      # Внутри Docker-сети хосты db/redis, не localhost из .env для локальной разработки
+      DATABASE_URL: postgresql://user:password@db:5432/vball_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      API_PORT: "3001"
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
     ports:
-      - "3000:3000"
+      - "3001:3001"
     restart: unless-stopped
 
 volumes:

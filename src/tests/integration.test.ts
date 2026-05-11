@@ -3,7 +3,7 @@ import { prisma } from '../infrastructure/prisma.js';
 import { registerUser, registerOrganizer, createGame, joinGame, markPayment } from '../application/use-cases.js';
 import { GameStatus } from '../domain/game.js';
 import { RegStatus } from '../domain/registration.js';
-import { clearDatabase } from './setup.js';
+import { clearDatabase } from './test-db-helpers.js';
 
 describe('Integration Tests - Full User Journey', () => {
    beforeEach(async () => {

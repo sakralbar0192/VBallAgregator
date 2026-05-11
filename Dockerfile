@@ -54,6 +54,6 @@ COPY --from=base /app/dist ./dist
 COPY --from=base /app/prisma ./prisma
 COPY package.json ./
 
-EXPOSE 3000
+EXPOSE 3001
 
 CMD ["node", "dist/index.js"]

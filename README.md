@@ -5,30 +5,35 @@ Telegram-бот для автоматизации организации вол�
 ## 🚀 Быстрый старт
 
 ### Установка и запуск
+Зависимости и CI используют **npm** (`package-lock.json`). При желании можно использовать **bun** — скрипты в `package.json` те же.
+
 ```bash
 # Установка зависимостей
-bun install
+npm ci
 
-# Запуск инфраструктуры (PostgreSQL, Redis)
-docker-compose up -d
+# Запуск инфраструктуры (PostgreSQL на порту 5434, Redis)
+docker compose up -d db redis
 
 # Настройка переменных окружения
 cp .env.example .env
-# Отредактируйте .env файл
+# Укажите TELEGRAM_BOT_TOKEN и при необходимости API_PORT (по умолчанию 3001)
 
 # Настройка базы данных
-bun run prisma:migrate
-bun run prisma:generate
+npm run prisma:migrate
+npm run prisma:generate
 
-# Запуск приложения
-bun run dev
+# Запуск приложения (бот + HTTP API)
+npm run dev
 ```
 
 ### Проверка работоспособности
+После старта процесс слушает HTTP API на порту из **`API_PORT`** (в `.env.example` задано `3001`).
+
 ```bash
-# Проверка health endpoint
-curl http://localhost:3001/health
+curl "http://localhost:${API_PORT:-3001}/health"
 ```
+
+Если `npm run dev` сразу завершается с ошибкой к **`api.telegram.org`** (`ETIMEDOUT`, `ECONNREFUSED` и т.п.), проверьте доступ к Telegram Bot API из вашей сети (файрвол, прокси, VPN, региональные ограничения). Без успешного запроса к API бот не запустится.
 
 ## 📚 Документация
 
@@ -118,20 +123,9 @@ curl http://localhost:3001/health
 - **API**: Fastify для REST endpoints
 - **Контейнеризация**: Docker + docker-compose
 
-## 📋 Статус документации
+## 📋 Актуальность документации
 
-| Раздел | Полнота | Актуальность | Последнее обновление |
-|--------|---------|--------------|---------------------|
-| Guides | 100% | 95% | 2025-11-24 |
-| Architecture | 100% | 90% | 2025-11-24 |
-| Development | 100% | 85% | 2025-11-24 |
-| Business | 100% | 90% | 2025-11-24 |
-| Reference | 100% | 80% | 2025-11-24 |
-
-**Легенда:**
-- 🟢 Полная документация (90%+)
-- 🟡 Частично документировано (70-89%)
-- 🔴 Требует доработки (<70%)
+Smoke-проверки для разработчика: `npm run build`, `npm test` (нужны PostgreSQL и Redis из `docker compose`), `curl` на `/health` после `npm run dev`. Разделы в `documentation/` обновляются по мере изменений кода; при расхождении с поведением приложения приоритет у кода и этого README.
 
 ---
 
@@ -163,6 +157,6 @@ curl http://localhost:3001/health
 
 ---
 
-**Последнее обновление:** 2025-11-24  
-**Версия документации:** 1.0  
-**Статус:** Актуальная ✅
+**Последнее обновление:** 2026-05-11  
+**Версия документации:** 1.1  
+**Статус:** Актуальная (бот + Fastify health API)

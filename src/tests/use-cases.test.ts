@@ -3,7 +3,7 @@ import { prisma } from '../infrastructure/prisma.js';
 import { joinGame, leaveGame, markPayment, createGame, linkPlayerToOrganizer, finishGame } from '../application/use-cases.js';
 import { GameStatus } from '../domain/game.js';
 import { RegStatus } from '../domain/registration.js';
-import { clearDatabase, createTestOrganizer } from './setup.js';
+import { clearDatabase, createTestOrganizer } from './test-db-helpers.js';
 import { CommandHandlers } from '../bot/command-handlers.js';
 
 describe('Race Conditions Test', () => {

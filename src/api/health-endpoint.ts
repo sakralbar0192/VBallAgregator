@@ -1,19 +1,14 @@
 import { FastifyInstance } from 'fastify';
 import { HealthCheckService } from '../infrastructure/health.js';
-import { prisma } from '../infrastructure/prisma.js';
-import { createClient } from 'redis';
-import { SchedulerService } from '../shared/scheduler-service.js';
-import { EventBus } from '../shared/event-bus.js';
-import { config } from '../shared/config.js';
 
-// Initialize services for health checks
-const redisClient = createClient(config.redis);
-const eventBus = EventBus.getInstance();
-const schedulerService = new SchedulerService(eventBus);
-const healthService = new HealthCheckService(prisma, redisClient, schedulerService);
+export interface HealthRoutesOptions {
+  healthCheckService: HealthCheckService;
+}
 
-export async function healthRoutes(fastify: FastifyInstance) {
-  fastify.get('/health', async (request, reply) => {
+export async function healthRoutes(fastify: FastifyInstance, opts: HealthRoutesOptions) {
+  const healthService = opts.healthCheckService;
+
+  fastify.get('/health', async (_request, reply) => {
     const health = await healthService.checkHealth();
 
     const statusCode = health.status === 'healthy' ? 200
@@ -23,7 +18,7 @@ export async function healthRoutes(fastify: FastifyInstance) {
     reply.code(statusCode).send(health);
   });
 
-  fastify.get('/health/ready', async (request, reply) => {
+  fastify.get('/health/ready', async (_request, reply) => {
     const health = await healthService.checkHealth();
     const isReady = health.status !== 'unhealthy';
 
@@ -33,8 +28,7 @@ export async function healthRoutes(fastify: FastifyInstance) {
     });
   });
 
-  fastify.get('/health/live', async (request, reply) => {
-    // Простая проверка - приложение запущено
+  fastify.get('/health/live', async (_request, reply) => {
     reply.send({ alive: true, timestamp: new Date().toISOString() });
   });
 }

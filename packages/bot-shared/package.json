@@ -1,0 +1,7 @@
+{
+  "name": "@vball/bot-shared",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared presentation primitives for bot-volley and bot-racket"
+}

@@ -7,6 +7,46 @@ on:
     branches: [ main, develop ]
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    - name: Install dependencies
+      run: npm ci
+    - name: Generate Prisma client
+      run: npx prisma generate && node scripts/ensure-prisma-client-cjs.mjs
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+    - name: Run linter
+      run: npm run lint
+    - name: TypeScript (noEmit)
+      run: npm run typecheck
+
+  build-artifacts:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    - name: Install dependencies
+      run: npm ci
+    - name: Generate Prisma client
+      run: npx prisma generate && node scripts/ensure-prisma-client-cjs.mjs
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+    - name: TypeScript build
+      run: npm run build
+    - name: Verify worker bundles
+      run: test -f dist/apps/outbox-publisher/index.js && test -f dist/apps/notification-worker/index.js
+
   test:
     runs-on: ubuntu-latest
 
@@ -53,6 +93,3 @@ jobs:
         # Не настоящий бот; тесты мокают Telegram. Для боевого деплоя используйте секреты окружения.
         TELEGRAM_BOT_TOKEN: '000000000:CI_DUMMY_TOKEN_NOT_FOR_PRODUCTION_USE'
         API_PORT: '3001'
-
-    - name: Run linter
-      run: npm run lint

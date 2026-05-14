@@ -1,0 +1,36 @@
+openapi: 3.0.3
+info:
+  title: VBallAgregator internal — domain event envelope
+  version: 0.1.0
+  description: |
+    Тело сообщения в RabbitMQ (exchange `vball.domain`, routing key = `eventType`).
+    Синхронные REST-контракты между сервисами добавляются отдельными спецификациями.
+components:
+  schemas:
+    DomainEventEnvelope:
+      type: object
+      required:
+        - eventType
+        - schemaVersion
+        - occurredAt
+        - payload
+      properties:
+        eventType:
+          type: string
+          example: PlayerJoined
+        schemaVersion:
+          type: integer
+          minimum: 1
+          example: 1
+        aggregateId:
+          type: string
+          nullable: true
+        correlationId:
+          type: string
+          nullable: true
+        occurredAt:
+          type: string
+          format: date-time
+        payload:
+          description: Полезная нагрузка доменного события (тип зависит от eventType)
+          nullable: true

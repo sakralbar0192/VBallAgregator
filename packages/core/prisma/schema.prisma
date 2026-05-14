@@ -204,3 +204,20 @@ model MatchingSchedule {
 
   @@map("matching_schedules")
 }
+
+/// Transactional outbox для публикации доменных событий во внешний брокер (RabbitMQ).
+model MessagingOutbox {
+  id              String    @id @default(uuid())
+  eventType       String
+  schemaVersion   Int       @default(1)
+  aggregateId     String?
+  correlationId   String?
+  payload         Json
+  occurredAt      DateTime
+  createdAt       DateTime  @default(now())
+  publishedAt     DateTime?
+
+  @@index([publishedAt, createdAt])
+  @@index([eventType])
+  @@map("messaging_outbox")
+}

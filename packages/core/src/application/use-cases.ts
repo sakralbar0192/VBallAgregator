@@ -9,9 +9,12 @@
   import { ValidationError } from '../domain/errors/validation-error.js';
   import { GameAlreadyStartedError } from '../domain/errors/game-errors.js';
   import { prisma } from '../infrastructure/prisma.js';
+  import { PrismaJoinGamePriorityContextReader } from '../infrastructure/prisma-join-game-priority-context-reader.js';
   import { ApplicationServiceFactory } from './services/application-service-factory.js';
   import { OrganizerApplicationService } from './services/organizer-service.js';
   import { InvitationApplicationService } from './services/invitation-service.js';
+
+  const joinGamePriorityReader = new PrismaJoinGamePriorityContextReader(prisma);
 
   // Инициализируем фабрику сервисов
   const serviceFactory = ApplicationServiceFactory.getInstance();
@@ -45,10 +48,7 @@
     );
 
     // Проверить, находится ли игра в приоритетном окне
-    const game = await prisma.game.findUnique({
-      where: { id: gameId },
-      select: { status: true, organizerId: true, startsAt: true, createdAt: true }
-    });
+    const game = await joinGamePriorityReader.findGameJoinSnapshot(gameId);
 
     if (!game) {
       throw new BusinessRuleError('NOT_FOUND', 'Игра не найдена');
@@ -66,48 +66,28 @@
     let isInPriorityWindow = game.status === 'open' && gameAge < 2 * 60 * 60 * 1000;
 
     if (isInPriorityWindow) {
-      // Получить подтвержденных игроков организатора
-      const confirmedPlayers = await (prisma as any).playerOrganizer.findMany({
-        where: {
-          organizerId: game.organizerId,
-          status: 'confirmed'
-        },
-        select: { playerId: true }
-      });
+      const confirmedPlayerIds = await joinGamePriorityReader.listConfirmedPlayerIdsForOrganizer(game.organizerId);
 
-      if (confirmedPlayers.length > 0) {
-        // Получить ответы приоритетных игроков
-        const responses = await (prisma as any).gamePlayerResponse.findMany({
-          where: {
-            gameId,
-            playerId: { in: confirmedPlayers.map((p: any) => p.playerId) }
-          },
-          select: { response: true }
-        });
+      if (confirmedPlayerIds.length > 0) {
+        const responses = await joinGamePriorityReader.listGamePlayerResponsesForPlayers(gameId, confirmedPlayerIds);
 
-        // Проверить, все ли приоритетные игроки ответили (не 'ignored')
-        const allResponded = responses.length === confirmedPlayers.length &&
-          responses.every((r: any) => r.response !== 'ignored');
+        const allResponded =
+          responses.length === confirmedPlayerIds.length &&
+          responses.every(r => r.response !== 'ignored');
 
-        // Если все ответили, приоритетное окно закрыто
         isInPriorityWindow = !allResponded;
       } else {
-        // Нет приоритетных игроков - окно не активно
         isInPriorityWindow = false;
       }
     }
 
     if (isInPriorityWindow) {
-      // Проверить, является ли пользователь организатором игры
-      const isOrganizer = game.organizerId === userId;
+      const isOrganizer = await joinGamePriorityReader.isUserOrganizerByOrganizerRecord(game.organizerId, userId);
       if (!isOrganizer) {
-        const isConfirmedPlayer = await (prisma as any).playerOrganizer.findFirst({
-          where: {
-            playerId: userId,
-            organizerId: game.organizerId,
-            status: 'confirmed'
-          }
-        });
+        const isConfirmedPlayer = await joinGamePriorityReader.hasConfirmedPlayerOrganizerRelation(
+          userId,
+          game.organizerId
+        );
 
         if (!isConfirmedPlayer) {
           throw new BusinessRuleError('PRIORITY_WINDOW_ACTIVE', 'Игра доступна только для подтвержденных игроков организатора в приоритетное окно');

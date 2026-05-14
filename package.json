@@ -6,6 +6,7 @@
   "main": "dist/apps/server/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
+    "postinstall": "cross-env DATABASE_URL=postgresql://127.0.0.1:5432/_prisma_postinstall_placeholder npx prisma generate --schema packages/core/prisma/schema.prisma && node scripts/ensure-prisma-client-cjs.mjs",
     "dev": "tsx -r dotenv/config apps/server/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/apps/server/index.js",
@@ -21,13 +22,18 @@
     "test:e2e": "node -r dotenv/config --experimental-vm-modules ./node_modules/.bin/jest --runInBand --selectProjects e2e",
     "test:ci": "SKIP_INTEGRATION_TESTS=true node -r dotenv/config --experimental-vm-modules ./node_modules/.bin/jest --runInBand --selectProjects unit-integration",
     "test:watch": "node -r dotenv/config --experimental-vm-modules ./node_modules/.bin/jest --runInBand --watch",
-    "lint": "eslint . --max-warnings 0"
+    "lint": "eslint . --max-warnings 0",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "check": "npm run lint && npm run typecheck",
+    "worker:outbox": "node dist/apps/outbox-publisher/index.js",
+    "worker:notification": "node dist/apps/notification-worker/index.js"
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",
     "@prisma/client": "^6.19.0",
     "@types/node": "^24.9.2",
     "@types/uuid": "^11.0.0",
+    "amqplib": "^0.10.9",
     "bullmq": "^5.63.0",
     "cross-env": "^10.1.0",
     "date-fns": "^4.1.0",
@@ -45,8 +51,10 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/amqplib": "^0.10.8",
     "@types/jest": "^30.0.0",
     "eslint": "^10.3.0",
+    "globals": "^17.6.0",
     "jest": "^30.2.0",
     "ts-jest": "^29.4.5",
     "tsx": "^4.20.6",

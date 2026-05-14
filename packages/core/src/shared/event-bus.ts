@@ -1,6 +1,7 @@
 import { DomainEvent as TypedDomainEvent } from './types.js';
 import { LoggerFactory } from './layer-logger.js';
 import { LOG_MESSAGES } from './logging-messages.js';
+import { recordDomainEventToOutbox } from '../infrastructure/messaging-outbox-record.js';
 
 export type DomainEvent = TypedDomainEvent & {
   occurredAt: Date;
@@ -36,8 +37,6 @@ export class EventBus {
     logger.info('publish', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.EVENT_BUS_PUBLISHING, { eventType: event.type, eventId: event.id });
     const handlers = this.handlers.get(event.type) || [];
 
-    console.log('handlers', handlers)
-
     const results = await Promise.allSettled(
       handlers.map(handler => this.handleWithRetry(handler, event))
     );
@@ -53,6 +52,22 @@ export class EventBus {
 
       // Отправляем в dead letter queue
       this.deadLetterQueue.push(event);
+      return;
+    }
+
+    if (process.env.OUTBOX_RECORD_ENABLED === 'true') {
+      try {
+        const typed = event as TypedDomainEvent & { occurredAt: Date };
+        await recordDomainEventToOutbox(
+          { type: event.type, occurredAt: event.occurredAt, payload: typed.payload },
+          null
+        );
+      } catch (err) {
+        logger.warn('publish', 'messaging_outbox_record_failed', {
+          eventType: event.type,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
   }
 

@@ -15,6 +15,17 @@ services:
       timeout: 5s
       retries: 5
 
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   redis:
     image: redis:7-alpine
     ports:
@@ -36,6 +47,8 @@ services:
       DATABASE_URL: postgresql://user:password@db:5432/vball_db
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      OUTBOX_RECORD_ENABLED: "true"
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       API_PORT: "3001"
     depends_on:
@@ -43,8 +56,36 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     ports:
       - "3001:3001"
+    restart: unless-stopped
+
+  outbox-publisher:
+    build: .
+    env_file: .env
+    command: ["node", "dist/apps/outbox-publisher/index.js"]
+    environment:
+      DATABASE_URL: postgresql://user:password@db:5432/vball_db
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      OUTBOX_POLL_INTERVAL_MS: "2000"
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  notification-worker:
+    build: .
+    env_file: .env
+    command: ["node", "dist/apps/notification-worker/index.js"]
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

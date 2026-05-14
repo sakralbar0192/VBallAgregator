@@ -18,9 +18,15 @@
   },
   "include": [
     "apps/server/**/*.ts",
+    "apps/outbox-publisher/**/*.ts",
+    "apps/notification-worker/**/*.ts",
     "packages/core/src/**/*.ts",
     "packages/bot-volley/src/**/*.ts",
-    "packages/bot-racket/src/**/*.ts"
+    "packages/bot-racket/src/**/*.ts",
+    "packages/shared-kernel/src/**/*.ts",
+    "packages/messaging-rabbit/src/**/*.ts",
+    "packages/contracts/src/**/*.ts",
+    "packages/bot-shared/src/**/*.ts"
   ],
   "exclude": [
     "node_modules",

@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import type { FastifyInstance } from 'fastify';
+import { initTelemetry } from '../../packages/core/src/shared/telemetry.js';
 import { validateConfig, config } from '../../packages/core/src/shared/config.js';
 import { createBot } from '../../packages/bot-volley/src/bot/create-bot.js';
 import { SchedulerService } from '../../packages/core/src/shared/scheduler-service.js';
@@ -22,6 +23,7 @@ async function startApp() {
   let apiServer: FastifyInstance | undefined;
 
   try {
+    initTelemetry();
     validateConfig(config);
     startupLogger.info('validateConfig', LOG_MESSAGES.STARTUP.CONFIG_VALIDATED);
 

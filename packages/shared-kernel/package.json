@@ -1,0 +1,7 @@
+{
+  "name": "@vball/shared-kernel",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared event envelope and versioning for microservices split"
+}

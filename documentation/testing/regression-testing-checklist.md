@@ -24,6 +24,7 @@
 |----|------|-----------|
 | TC-REG-001 | Регистрация игрока (полный путь) | ☐ Pass ☐ Fail ☐ Blocked |
 | TC-REG-002 | Регистрация организатора | ☐ Pass ☐ Fail ☐ Blocked |
+| TC-RACKET-001 | Регистрация «ракетки»: полный wizard `racket-profile` → `matching_profiles` + `matching_schedules` в БД | ☐ Pass ☐ Fail ☐ Blocked |
 | TC-PLAYER-001 | `/games` | ☐ Pass ☐ Fail ☐ Blocked |
 | TC-PLAYER-003 | `/join` → confirmed | ☐ Pass ☐ Fail ☐ Blocked |
 | TC-PLAYER-007 | `/leave` + промоушен waitlist (если подготовлены данные) | ☐ Pass ☐ Fail ☐ Blocked |

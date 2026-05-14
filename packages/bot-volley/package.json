@@ -1,0 +1,7 @@
+{
+  "name": "@multi-sport/bot-volley",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Telegraf: волейбольные сценарии и модули"
+}

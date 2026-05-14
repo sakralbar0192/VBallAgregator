@@ -19,20 +19,20 @@ COPY package.json package-lock.json* ./
 RUN npm ci --ignore-scripts
 
 # 3) Генерация Prisma Client (кешируется отдельно)
-COPY prisma ./prisma
+COPY packages/core/prisma ./packages/core/prisma
 
 # Заглушка для генерации Prisma Client
 ARG DATABASE_URL="file:./dev.db"
 ENV DATABASE_URL=$DATABASE_URL
 
 # Pre-download Prisma CLI engines (migration-engine, etc.) for offline use
-RUN npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > /dev/null || \
-    npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > /dev/null || true
+RUN npx prisma migrate diff --from-empty --to-schema-datamodel packages/core/prisma/schema.prisma --script > /dev/null || \
+    npx prisma migrate diff --from-empty --to-schema-datamodel packages/core/prisma/schema.prisma --script > /dev/null || true
 
 # Генерация Prisma Client with retries for flaky networks
 RUN for i in {1..5}; do \
       echo "Prisma generate attempt $$i/5"; \
-      npx prisma generate && break || sleep 10; \
+      npx prisma generate --schema packages/core/prisma/schema.prisma && break || sleep 10; \
     done
 
 # 4) Сборка приложения
@@ -51,9 +51,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=base /app/node_modules ./node_modules
 COPY --from=base /root/.cache/prisma /root/.cache/prisma
 COPY --from=base /app/dist ./dist
-COPY --from=base /app/prisma ./prisma
+COPY --from=base /app/packages/core/prisma ./packages/core/prisma
 COPY package.json ./
 
 EXPOSE 3001
 
-CMD ["node", "dist/index.js"]
+CMD ["node", "dist/apps/server/index.js"]

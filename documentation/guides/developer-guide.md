@@ -1,9 +1,13 @@
 # Руководство разработчика
 
 ## Обзор
-Данное руководство предоставляет комплексную информацию для разработчиков, работающих над проектом VBallAgregator - Telegram-ботом для управления волейбольными играми и регистрациями игроков.
+
+Руководство для разработчиков **VBallAgregator**: мульти-спорт Telegram-бот (волейбол, ракетки), домен игр и регистраций в `packages/core`, UI бота в `packages/bot-volley`, ракеточные сцены в `packages/bot-racket`. Точка входа процесса — [apps/server/index.ts](../../apps/server/index.ts).
+
+**Каноничные обзоры:** [Архитектура реализации](../architecture/implementation-architecture.md) · [Продукт и возможности](../business/product-and-capabilities.md)
 
 ## Содержание
+
 - [Начало работы](#начало-работы)
 - [Структура проекта](#структура-проекта)
 - [Среда разработки](#среда-разработки)
@@ -16,187 +20,138 @@
 ## Начало работы
 
 ### Предварительные требования
-- Node.js (v18 или выше)
+
+- Node.js 20+ (в CI зафиксировано 20; локально желательно не ниже 18)
 - TypeScript
-- Docker & Docker Compose
-- База данных PostgreSQL
+- Docker и Docker Compose (PostgreSQL, Redis)
 - Telegram Bot Token
 
 ### Установка
-1. Клонируйте репозиторий
-2. Установите зависимости: `npm install`
-3. Скопируйте `.env.example` в `.env` и настройте
-4. Выполните миграции базы данных: `npx prisma migrate dev`
-5. Запустите сервер разработки: `npm run dev`
+
+1. Клонировать репозиторий
+2. `npm ci`
+3. Скопировать `.env.example` в `.env`, задать `TELEGRAM_BOT_TOKEN`, `DATABASE_URL`, при необходимости `API_PORT` (по умолчанию в примере `3001`)
+4. Поднять БД и Redis: `npm run docker:up` или свой стенд
+5. Миграции: `npm run prisma:migrate` (или `npm run prisma:deploy` на стенде)
+6. Клиент Prisma: `npm run prisma:generate`
+7. Запуск: `npm run dev`
 
 ## Структура проекта
 
 ```
-src/
-├── api/                 # API endpoints и настройка сервера
-├── application/         # Варианты использования и бизнес-логика
-├── bot/                 # Реализация Telegram бота
-├── domain/              # Модели домена и бизнес-правила
-├── infrastructure/      # База данных, внешние сервисы
-├── shared/              # Общие утилиты и помощники
-└── tests/               # Тестовые файлы
+apps/
+└── server/
+    └── index.ts          # Точка входа: бот, API, scheduler, event bus
+
+packages/
+├── core/
+│   ├── prisma/           # schema.prisma, migrations
+│   └── src/
+│       ├── api/          # Fastify HTTP API
+│       ├── application/ # Use cases, application services
+│       ├── domain/       # Доменные модели и правила
+│       ├── infrastructure/
+│       ├── shared/       # Конфиг, логирование, event bus, scheduler
+│       └── tests/        # Jest-тесты (unit / integration / e2e)
+├── bot-volley/
+│   └── src/bot/          # Telegraf: create-bot, modules, handlers
+└── bot-racket/
+    └── src/
+        ├── racket-scenes.ts
+        └── profile-setup/  # Wizard ракеточного профиля
+
+Корень репозитория: package.json, tsconfig.json, jest.config.js, docker-compose.yml
 ```
 
 ### Ключевые директории
 
-#### Модуль бота (`src/bot/`)
-- **Modules**: Модульная функциональность бота
-- **Handlers**: Обработчики команд и callback'ов
-- **Common**: Общие утилиты бота
-
-#### Домен (`src/domain/`)
-- **Models**: Основные бизнес-сущности (Game, Registration, User)
-- **Services**: Бизнес-логика и правила
-- **Errors**: Пользовательские исключения домена
-
-#### Инфраструктура (`src/infrastructure/`)
-- **Repositories**: Уровень доступа к данным
-- **Prisma**: Схема базы данных и миграции
+| Область | Путь |
+|---------|------|
+| Use cases и домен | `packages/core/src/application`, `packages/core/src/domain` |
+| Prisma | `packages/core/prisma/schema.prisma` |
+| Регистрация команд и callback | `packages/bot-volley/src/bot/modules`, `.../handlers` |
+| Ракеточные сцены | `packages/bot-racket/src` |
 
 ## Среда разработки
 
 ### Переменные окружения
-Создайте файл `.env` со следующими переменными:
+
+Ориентир — [.env.example](../../.env.example). Минимум:
 
 ```env
-DATABASE_URL="postgresql://user:password@localhost:5432/vball_db"
+DATABASE_URL="postgresql://user:password@localhost:5434/vball_db"
 TELEGRAM_BOT_TOKEN="your_bot_token"
-PORT=3000
-NODE_ENV=development
+API_PORT=3001
 ```
 
-### Настройка базы данных
-1. Убедитесь, что PostgreSQL запущен
-2. Выполните миграции: `npx prisma migrate dev`
-3. Заполните данными (при необходимости): `npm run db:seed`
+Дополнительно: Redis (`REDIS_HOST`, `REDIS_PORT`, при необходимости пароль), таймзона и локаль из примера.
+
+### База данных
+
+- Миграции разработки: `npm run prisma:migrate`
+- Деплой миграций: `npm run prisma:deploy`
+- Studio: `npm run prisma:studio`
+
+Отдельного скрипта `db:seed` в корневом `package.json` нет — засев данных делайте вручную или через свои скрипты.
 
 ## Стандарты кодирования
 
-См. [Разработка/Стандарты кодирования](../development/coding-standards.md) для подробных рекомендаций.
-
-### Ключевые принципы
-- Паттерны Clean Architecture
-- TypeScript для типобезопасности
-- Domain-Driven Design (DDD)
-- Принципы SOLID
-- Комплексная обработка ошибок
+См. [Стандарты кодирования](../development/coding-standards.md).
 
 ## Тестирование
 
-См. [Разработка/Стратегия тестирования](../development/testing-strategy.md) для подробных рекомендаций по тестированию.
+См. [Стратегия тестирования](../development/testing-strategy.md).
 
-### Запуск тестов
-- Модульные тесты: `npm run test`
-- Интеграционные тесты: `npm run test:integration`
-- Все тесты: `npm run test:all`
+### Запуск
+
+| Команда | Назначение |
+|---------|------------|
+| `npm run test` | unit-integration (с покрытием) + e2e |
+| `npm run test:unit` | без файлов `*.integration.test.ts` |
+| `npm run test:integration` | узкий набор integration |
+| `npm run test:e2e` | e2e-проект |
+| `npm run test:ci` | CI-режим с `SKIP_INTEGRATION_TESTS` |
+
+Тесты и `jest.config` подхватывают и `packages/bot-racket/src/**/*.test.ts`.
 
 ## База данных
 
-### Схема Prisma
-Схема базы данных определена в `prisma/schema.prisma`. Основные сущности:
-
-- **User**: Пользователи Telegram, зарегистрированные в системе
-- **Game**: Экземпляры волейбольных игр
-- **Registration**: Регистрации игроков на игры
-- **Organizer**: Пользователи, которые могут создавать игры
-
-### Миграции
-- Создать миграцию: `npx prisma migrate dev --name description`
-- Сбросить базу данных: `npx prisma migrate reset`
-- Сгенерировать клиент: `npx prisma generate`
+Схема: [packages/core/prisma/schema.prisma](../../packages/core/prisma/schema.prisma). Основные сущности: `User` (в т.ч. `activeSport`, `levelTag`), `Game`, `Registration`, `Organizer`, `MatchingProfile`, `MatchingSchedule`, и др. Подробнее — [data-model.md](../architecture/data-model.md).
 
 ## Разработка бота
 
-### Модули бота
-Бот организован в модули:
-- **Profile Module**: Управление профилем пользователя
-- **Registration Module**: Регистрации на игры
-- **Game Management Module**: Создание и управление играми
-- **Payment Module**: Обработка платежей
-- **Settings Module**: Настройки пользователя
+- Сборка бота: [packages/bot-volley/src/bot/create-bot.ts](../../packages/bot-volley/src/bot/create-bot.ts) — `session`, `Stage`, модули из `BotModuleRegistry`.
+- Новые команды: регистрация в соответствующем модуле в `packages/bot-volley/src/bot/modules/`.
+- Ракеточный wizard: [packages/bot-racket/src/profile-setup/](../../packages/bot-racket/src/profile-setup/) — при изменении шагов проверять вызов **`next()`** для не-callback апдейтов в `WizardScene` (см. [implementation-architecture.md](../architecture/implementation-architecture.md)).
 
-### Структура команд
-- `/start` - Инициализация профиля пользователя
-- `/register` - Регистрация на игру
-- `/create` - Создание новой игры (только для организаторов)
-- `/profile` - Управление профилем пользователя
-- `/games` - Просмотр доступных игр
-
-### Обработка сообщений
-Все взаимодействия с ботом следуют последовательным шаблонам:
-1. Валидация команды
-2. Выполнение бизнес-логики
-3. Форматирование ответа
-4. Обработка ошибок
+Список модулей и паттерны — [modules.md](../architecture/modules.md).
 
 ## Участие в разработке
 
-### Процесс разработки
-См. [Разработка/Процесс разработки](../development/workflow.md) для полного процесса.
+См. [workflow.md](../development/workflow.md).
 
-### Ключевые рекомендации
-1. Следуйте стандартам кодирования
-2. Пишите тесты для новых функций
-3. Обновляйте документацию
-4. Используйте conventional commits
-5. Создавайте pull request'ы для ревью
+### Команды из package.json
 
-### Команды разработки
 ```bash
-# Разработка
-npm run dev          # Запуск сервера разработки
-npm run build        # Сборка для продакшена
-npm run lint         # Запуск линтинга
-npm run format       # Форматирование кода
-
-# База данных
-npm run db:migrate   # Выполнение миграций
-npm run db:reset     # Сброс базы данных
-npm run db:seed      # Заполнение базы данных
-
-# Тестирование
-npm run test         # Запуск модульных тестов
-npm run test:watch   # Режим наблюдения
-npm run test:coverage # Отчет о покрытии
+npm run dev          # tsx apps/server/index.ts + dotenv
+npm run build        # tsc
+npm run lint         # eslint
+npm run prisma:migrate
+npm run prisma:generate
+npm run test
 ```
 
 ## Устранение неполадок
 
-### Частые проблемы
-
-#### Проблемы подключения к базе данных
-- Убедитесь, что PostgreSQL запущен
-- Проверьте DATABASE_URL в .env
-- Убедитесь, что база данных существует
-
-#### Бот не отвечает
-- Проверьте TELEGRAM_BOT_TOKEN
-- Проверьте, что бот правильно инициализирован
-- Проверьте логи ошибок
-
-#### Ошибки миграции
-- Проверьте конфликты схемы
-- Убедитесь, что нет активных подключений
-- Попробуйте сбросить базу данных при необходимости
-
-### Отладка
-- Используйте `npm run dev` для разработки с hot reload
-- Проверяйте логи в терминале для подробностей об ошибках
-- Используйте DevTools браузера для отладки веб-интерфейса
+- **БД:** проверить `DATABASE_URL`, миграции, доступность Postgres.
+- **Бот не отвечает:** токен, сеть до `api.telegram.org`, не застрял ли пользователь в сцене без `next()` (см. архитектурный документ), rate limit в `create-bot.ts`.
+- **Миграции:** конфликты схемы, `prisma migrate status`.
 
 ## Ресурсы
 
+- [Архитектура реализации](../architecture/implementation-architecture.md)
 - [Справочник API](../architecture/api-reference.md)
-- [Архитектура проекта](../architecture/overview.md)
-- [Сценарии тестирования](../development/TESTING_SCENARIOS.md)
-- [Расширенная система логирования](../development/comprehensive-logging-guide.md)
+- [Стратегия тестирования](../development/testing-strategy.md)
+- [Логирование](../development/comprehensive-logging-guide.md)
 
----
-
-**Последнее обновление**: 2025-11-24  
-**Версия**: 1.0.0
+**Последнее обновление:** 2026-05-14

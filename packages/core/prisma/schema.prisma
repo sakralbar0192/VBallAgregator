@@ -1,0 +1,206 @@
+generator client {
+  provider        = "prisma-client-js"
+  binaryTargets   = ["native", "debian-openssl-1.1.x", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum GameStatus {
+  open
+  closed
+  finished
+  canceled
+}
+
+enum RegStatus {
+  confirmed
+  waitlisted
+  canceled
+}
+
+enum PaymentStatus {
+  unpaid
+  paid
+}
+
+enum PlayerOrganizerStatus {
+  pending
+  confirmed
+  rejected
+}
+
+enum GamePlayerResponseType {
+  yes
+  no
+  ignored
+}
+
+enum SportKind {
+  volleyball
+  racket
+}
+
+model User {
+   id          String   @id @default(uuid())
+   telegramId  BigInt   @unique
+   name        String
+   levelTag    String?
+   activeSport SportKind @default(volleyball)
+   createdAt   DateTime @default(now())
+
+   // Relations
+   registrations Registration[]
+   organizer     Organizer?
+   notificationPreferences UserNotificationPreferences?
+   playerOrganizers PlayerOrganizer[] @relation("PlayerToOrganizers")
+   gamePlayerResponses GamePlayerResponse[]
+   matchingProfile     MatchingProfile?
+   matchingSchedule    MatchingSchedule?
+
+   @@index([telegramId])
+   @@map("users")
+}
+
+model Organizer {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  title       String?
+  description String?
+
+  // Relations
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  games       Game[]
+  players     PlayerOrganizer[] @relation("OrganizerToPlayers")
+
+  @@map("organizers")
+}
+
+model Game {
+  id          String     @id @default(uuid())
+  organizerId String
+  venueId     String     // Пока просто string, позже можно сделать модель Venue
+  startsAt    DateTime
+  capacity    Int
+  levelTag    String?
+  priceText   String?
+  status      GameStatus @default(open)
+  priorityWindowClosesAt DateTime?
+  publishedForAll Boolean @default(false)
+  createdAt   DateTime   @default(now())
+
+  // Relations
+  organizer     Organizer     @relation(fields: [organizerId], references: [id])
+  registrations Registration[]
+  gamePlayerResponses GamePlayerResponse[]
+
+  @@index([organizerId])
+  @@map("games")
+}
+
+model Registration {
+   id            String        @id @default(uuid())
+   gameId        String
+   userId        String
+   status        RegStatus
+   paymentStatus PaymentStatus @default(unpaid)
+   paymentMarkedAt DateTime?
+   createdAt     DateTime      @default(now())
+
+   // Relations
+   game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+   @@unique([gameId, userId])
+   @@index([gameId, status, createdAt])
+   @@index([userId])
+   @@map("registrations")
+}
+
+model UserNotificationPreferences {
+    userId                    String   @id
+    globalNotifications       Boolean  @default(true)
+    paymentRemindersAuto      Boolean  @default(true)
+    paymentRemindersManual    Boolean  @default(true)
+    gameReminders24h          Boolean  @default(true)
+    gameReminders2h           Boolean  @default(true)
+    organizerNotifications    Boolean  @default(true)
+    createdAt                 DateTime @default(now())
+    updatedAt                 DateTime @updatedAt
+
+    // Relations
+    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@index([globalNotifications])
+    @@map("user_notification_preferences")
+}
+
+model PlayerOrganizer {
+  id            String   @id @default(uuid())
+  playerId      String
+  organizerId   String
+  status        PlayerOrganizerStatus   @default(pending)
+  requestedAt   DateTime @default(now())
+  confirmedAt   DateTime?
+
+  player        User     @relation("PlayerToOrganizers", fields: [playerId], references: [id], onDelete: Cascade)
+  organizer     Organizer @relation("OrganizerToPlayers", fields: [organizerId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, organizerId])
+  @@index([organizerId, status])
+  @@index([playerId, status])
+  @@map("player_organizers")
+}
+
+model GamePlayerResponse {
+  id            String   @id @default(uuid())
+  gameId        String
+  playerId      String
+  response      GamePlayerResponseType
+  respondedAt   DateTime?
+  createdAt     DateTime @default(now())
+
+  game          Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  player        User     @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([gameId, playerId])
+  @@index([gameId, response])
+  @@map("game_player_responses")
+}
+
+model MatchingProfile {
+  userId              String   @id
+  preferredGenders    String   @default("")
+  preferredAges       String   @default("")
+  playLevel           String   @default("")
+  /// Код уровня из wizard (beginner | amateur | pro), не путать с волейбольным User.levelTag
+  playLevelCode       String?
+  playerGender        String?
+  playerAgeBand       String?
+  weekdayPreference   String?
+  dayTimePreference   String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("matching_profiles")
+}
+
+/// Расписание по дням недели (как в RacketMate Schedule): строки со слотами через запятую.
+model MatchingSchedule {
+  userId    String  @id
+  monday    String?
+  tuesday   String?
+  wednesday String?
+  thursday  String?
+  friday    String?
+  saturday  String?
+  sunday    String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("matching_schedules")
+}

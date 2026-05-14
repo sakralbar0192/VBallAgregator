@@ -1,5 +1,5 @@
-import { GameRepo, RegistrationRepo, OrganizerRepo, PrismaOrganizerRepo } from '../../infrastructure/repositories/index.js';
-import { EventBus } from '../../shared/event-bus.js';
+import { GameRepo, RegistrationRepo, OrganizerRepo } from '../../infrastructure/repositories/index.js';
+import { EventBus, type DomainEvent } from '../../shared/event-bus.js';
 import { GameDomainService } from '../../domain/services/game-domain-service.js';
 import { SchedulerService } from '../../shared/scheduler-service.js';
 import { v4 as uuid } from 'uuid';
@@ -9,6 +9,8 @@ import { metrics } from '../../shared/metrics.js';
 import { LoggerFactory } from '../../shared/layer-logger.js';
 import { LOG_MESSAGES } from '../../shared/logging-messages.js';
 import { RegStatus } from '../../domain/registration.js';
+import { prisma } from '../../infrastructure/prisma.js';
+import type { Prisma } from '@prisma/client';
 
 export interface MarkPaymentCommand {
   gameId: string;
@@ -59,18 +61,21 @@ export class GameApplicationService {
       const { game, registration } = await this.gameDomainService
         .validatePaymentMarking(command.gameId, command.userId);
 
-      // Доменная логика
       registration.markPaid(game);
 
-      // Персистенция
-      await this.registrationRepo.upsert(registration);
-
-      // События - отложенная обработка через event bus
-      await this.eventBus.publish({
+      const paymentEvent: DomainEvent = {
         type: 'PaymentMarked',
+        id: '',
         payload: { gameId: command.gameId, userId: command.userId },
         occurredAt: new Date(),
+      };
+
+      await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        await this.registrationRepo.upsert(registration, { tx });
+        await this.eventBus.appendOutbox(tx, paymentEvent);
       });
+
+      await this.eventBus.dispatchHandlers(paymentEvent);
     } catch (error: any) {
       // Публикуем событие об ошибке оплаты
       if (error.code === 'PAYMENT_WINDOW_NOT_OPEN') {
@@ -92,30 +97,35 @@ export class GameApplicationService {
    * @throws DomainError если игра не найдена или заполнена
    */
   async joinGame(command: JoinGameCommand): Promise<{ status: RegStatus; isReactivation?: boolean }> {
-    return await this.gameRepo.transaction(async () => {
-      const result = await this.gameDomainService.processJoinGame(
-        command.gameId,
-        command.userId
-      );
+    let joinedEvent: DomainEvent | null = null;
+    const result = await this.gameRepo.transaction(async ({ tx }) => {
+      const ctx = { tx };
+      const inner = await this.gameDomainService.processJoinGame(command.gameId, command.userId, ctx);
 
-      metrics.registrationsProcessed.increment();
-
-      // Публикуем событие только если это новая регистрация или повторная после отмены
-      // (не для случая, когда игрок уже в листе ожидания)
-      if (result.isReactivation !== false) {
-        await this.eventBus.publish({
+      if (inner.isReactivation !== false) {
+        joinedEvent = {
           type: 'PlayerJoined',
           payload: {
             gameId: command.gameId,
             userId: command.userId,
-            status: result.status
+            status: inner.status,
           },
           occurredAt: new Date(),
-        });
+          id: '',
+        };
+        await this.eventBus.appendOutbox(tx, joinedEvent);
       }
 
-      return result;
+      return inner;
     });
+
+    metrics.registrationsProcessed.increment();
+
+    if (joinedEvent) {
+      await this.eventBus.dispatchHandlers(joinedEvent);
+    }
+
+    return result;
   }
 
   /**
@@ -239,7 +249,6 @@ export class GameApplicationService {
 
     // Schedule reminders
     await this.schedulerService.scheduleGameReminder24h(g.id, g.startsAt);
-    await this.schedulerService.initializeWorkers();
 
     return g;
   }
@@ -261,12 +270,12 @@ export class GameApplicationService {
   }
 
   async registerOrganizer(command: RegisterOrganizerCommand): Promise<{ ok: boolean }> {
-    await this.gameRepo.transaction(async () => {
-      const { prisma } = await import('../../infrastructure/prisma.js');
-      await prisma.organizer.upsert({
+    await this.gameRepo.transaction(async ({ tx }) => {
+      const t = tx as Prisma.TransactionClient;
+      await t.organizer.upsert({
         where: { userId: command.userId },
         update: {},
-        create: { userId: command.userId, title: command.title }
+        create: { userId: command.userId, title: command.title },
       });
     });
 

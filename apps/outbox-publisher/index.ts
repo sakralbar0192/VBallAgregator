@@ -1,9 +1,10 @@
 import 'dotenv/config';
+import { initTelemetry } from '../../packages/core/src/shared/telemetry.js';
 import { prisma } from '../../packages/core/src/infrastructure/prisma.js';
 import { getMessagingOutboxDelegate } from '../../packages/core/src/infrastructure/messaging-outbox-delegate.js';
 import {
-  openRabbitConnection,
-  publishDomainEvent,
+  openRabbitPublisherConnection,
+  publishDomainEventConfirmed,
 } from '../../packages/messaging-rabbit/src/connection.js';
 import { domainEventEnvelopeSchema } from '../../packages/shared-kernel/src/index.js';
 
@@ -16,8 +17,9 @@ function requireEnv(name: string): string {
 }
 
 async function main(): Promise<void> {
+  initTelemetry();
   const url = requireEnv('RABBITMQ_URL');
-  const { connection, channel } = await openRabbitConnection(url);
+  const { connection, channel } = await openRabbitPublisherConnection(url);
 
   let running = true;
 
@@ -54,9 +56,16 @@ async function main(): Promise<void> {
       const body = Buffer.from(
         JSON.stringify(envelope, (_k, v) => (typeof v === 'bigint' ? v.toString() : v))
       );
-      const ok = publishDomainEvent(channel, envelope.eventType, body);
-      if (!ok) {
-        console.warn('[outbox-publisher] channel backpressure, retry later', row.id);
+      try {
+        const ok = await publishDomainEventConfirmed(channel, envelope.eventType, body, {
+          headers: { 'x-outbox-id': row.id },
+        });
+        if (!ok) {
+          console.warn('[outbox-publisher] channel backpressure, retry later', row.id);
+          break;
+        }
+      } catch (e) {
+        console.warn('[outbox-publisher] publish confirm failed, will retry', row.id, e);
         break;
       }
       await outbox.update({

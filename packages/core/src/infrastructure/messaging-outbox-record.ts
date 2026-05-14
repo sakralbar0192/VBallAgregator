@@ -1,6 +1,7 @@
 import { prisma } from './prisma.js';
 import { buildEnvelope, inferAggregateIdFromPayload } from '../../../shared-kernel/src/index.js';
 import { getMessagingOutboxDelegate } from './messaging-outbox-delegate.js';
+import type { Prisma } from '@prisma/client';
 
 export type OutboxDomainEvent = {
   type: string;
@@ -14,12 +15,16 @@ function jsonSafePayload(payload: unknown): unknown {
 
 /**
  * Запись в transactional outbox (монолит). Включается `OUTBOX_RECORD_ENABLED=true`.
- * Полная транзакционность с бизнес-операцией — следующий шаг рефакторинга use cases.
+ * При переданном `client` запись идёт в той же interactive-транзакции Prisma.
  */
 export async function recordDomainEventToOutbox(
   event: OutboxDomainEvent,
-  correlationId?: string | null
+  correlationId?: string | null,
+  client: typeof prisma | Prisma.TransactionClient = prisma
 ): Promise<void> {
+  if (process.env.OUTBOX_RECORD_ENABLED !== 'true') {
+    return;
+  }
   const safePayload = jsonSafePayload(event.payload);
   const envelope = buildEnvelope({
     eventType: event.type,
@@ -29,7 +34,7 @@ export async function recordDomainEventToOutbox(
     aggregateId: inferAggregateIdFromPayload(event.type, safePayload),
   });
 
-  await getMessagingOutboxDelegate(prisma).create({
+  await getMessagingOutboxDelegate(client).create({
     data: {
       eventType: envelope.eventType,
       schemaVersion: envelope.schemaVersion,

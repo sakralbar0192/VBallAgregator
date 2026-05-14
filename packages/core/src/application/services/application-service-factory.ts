@@ -41,7 +41,7 @@ export class ApplicationServiceFactory {
       const organizerRepo = new PrismaOrganizerRepo();
       const eventBus = EventBus.getInstance();
       const gameDomainService = new GameDomainService(gameRepo, registrationRepo);
-      const schedulerService = new SchedulerService(eventBus);
+      const schedulerService = this.getSchedulerService();
 
       this.gameApplicationService = new GameApplicationService(
         gameRepo,
@@ -101,11 +101,16 @@ export class ApplicationServiceFactory {
     return EventBus.getInstance();
   }
 
+  private producerScheduler: SchedulerService | null = null;
+
   /**
-   * Получает SchedulerService
+   * Получает SchedulerService (очереди + статистика; без BullMQ workers в этом процессе).
    */
   getSchedulerService(): SchedulerService {
-    return new SchedulerService(this.getEventBus());
+    if (!this.producerScheduler) {
+      this.producerScheduler = new SchedulerService(this.getEventBus(), { runBullMqWorkers: false });
+    }
+    return this.producerScheduler;
   }
 
   /**
@@ -114,5 +119,6 @@ export class ApplicationServiceFactory {
   reset(): void {
     this.gameApplicationService = null;
     this.userApplicationService = null;
+    this.producerScheduler = null;
   }
 }

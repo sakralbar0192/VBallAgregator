@@ -3,6 +3,7 @@ import { BusinessRuleError } from '../errors/business-rule-error.js';
 import { RegStatus } from '../registration.js';
 import { v4 as uuid } from 'uuid';
 import { Registration } from '../registration.js';
+import type { QueryContext } from '../../../../contracts/src/query-context.js';
 
 export class GameDomainService {
   constructor(
@@ -27,9 +28,9 @@ export class GameDomainService {
     return { game, registration };
   }
 
-  async processJoinGame(gameId: string, userId: string) {
+  async processJoinGame(gameId: string, userId: string, ctx?: QueryContext) {
     // Advisory lock уже в repo.transaction
-    const game = await this.gameRepo.findById(gameId);
+    const game = await this.gameRepo.findById(gameId, ctx);
     if (!game) throw new BusinessRuleError('NOT_FOUND', 'Игра не найдена');
 
     // Проверяем статус игры
@@ -37,8 +38,8 @@ export class GameDomainService {
       throw new BusinessRuleError('GAME_NOT_OPEN', 'Игра не открыта для записи');
     }
 
-    const confirmedCount = await this.gameRepo.countConfirmed(gameId);
-    const existing = await this.registrationRepo.get(gameId, userId);
+    const confirmedCount = await this.gameRepo.countConfirmed(gameId, ctx);
+    const existing = await this.registrationRepo.get(gameId, userId, ctx);
 
     if (existing && existing.status === RegStatus.confirmed) {
       throw new BusinessRuleError('ALREADY_REGISTERED', 'Вы уже зарегистрированы на эту игру');
@@ -69,7 +70,7 @@ export class GameDomainService {
       isReactivation = false;
     }
 
-    await this.registrationRepo.upsert(registration);
+    await this.registrationRepo.upsert(registration, ctx);
 
     return { status, isReactivation };
   }

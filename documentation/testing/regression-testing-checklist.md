@@ -11,9 +11,9 @@
 
 | # | Проверка | ✓ |
 |---|----------|---|
-| P1 | Стенд: бот, БД, Redis (для очередей/квот), воркер планировщика — по сценарию | |
+| P1 | Стенд: бот, БД, Redis, **отдельный процесс `scheduler-service`** (BullMQ workers), при микросервисном сценарии — RabbitMQ + outbox-publisher + notification-worker; `INTERNAL_API_TOKEN` задан для `/internal/*` | |
 | P2 | Два Telegram-аккаунта (игрок + организатор) | |
-| P3 | Известны URL API для `/health*` | |
+| P3 | Известны URL API для `/health*` и при необходимости `/internal/*` (S2S Bearer) | |
 | P4 | Rate limit не отключён (кроме явного теста TC-INF-005) | |
 
 ---

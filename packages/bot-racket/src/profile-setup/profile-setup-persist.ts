@@ -1,4 +1,5 @@
 import { prisma } from '../../../core/src/infrastructure/prisma.js';
+import { PrismaRacketMatchingPersistence } from '../../../core/src/infrastructure/prisma-racket-matching-persistence.js';
 import { LoggerFactory } from '../../../core/src/shared/layer-logger.js';
 import DayTimeService from './services/day-time.js';
 import PlayLevelService from './services/play-level.js';
@@ -44,52 +45,29 @@ export async function persistRacketProfileFromWizardState(
   const weekdayPreference = WeekDayService.getReadableWeekDayInfo(selectedDays);
   const dayTimePreference = DayTimeService.getReadableDayTimeInfo(dayTimes).replace(/\n/g, ' ').trim();
 
-  await prisma.matchingProfile.upsert({
-    where: { userId: user.id },
-    create: {
-      userId: user.id,
-      preferredGenders: state.preferGenders?.join(', ') ?? '',
-      preferredAges: state.preferAges?.join(', ') ?? '',
-      playLevel: PlayLevelService.getReadableLevelInfo(level),
-      playLevelCode: level,
-      playerGender: state.gender ?? null,
-      playerAgeBand: state.age ?? null,
-      weekdayPreference,
-      dayTimePreference,
-    },
-    update: {
-      preferredGenders: state.preferGenders?.join(', ') ?? '',
-      preferredAges: state.preferAges?.join(', ') ?? '',
-      playLevel: PlayLevelService.getReadableLevelInfo(level),
-      playLevelCode: level,
-      playerGender: state.gender ?? null,
-      playerAgeBand: state.age ?? null,
-      weekdayPreference,
-      dayTimePreference,
-    },
+  const matching = new PrismaRacketMatchingPersistence(prisma);
+
+  await matching.upsertProfile({
+    userId: user.id,
+    preferredGenders: state.preferGenders?.join(', ') ?? '',
+    preferredAges: state.preferAges?.join(', ') ?? '',
+    playLevel: PlayLevelService.getReadableLevelInfo(level),
+    playLevelCode: level,
+    playerGender: state.gender ?? null,
+    playerAgeBand: state.age ?? null,
+    weekdayPreference,
+    dayTimePreference,
   });
 
-  await prisma.matchingSchedule.upsert({
-    where: { userId: user.id },
-    create: {
-      userId: user.id,
-      monday: scheduleDayString(dayTimes, 'monday'),
-      tuesday: scheduleDayString(dayTimes, 'tuesday'),
-      wednesday: scheduleDayString(dayTimes, 'wednesday'),
-      thursday: scheduleDayString(dayTimes, 'thursday'),
-      friday: scheduleDayString(dayTimes, 'friday'),
-      saturday: scheduleDayString(dayTimes, 'saturday'),
-      sunday: scheduleDayString(dayTimes, 'sunday'),
-    },
-    update: {
-      monday: scheduleDayString(dayTimes, 'monday'),
-      tuesday: scheduleDayString(dayTimes, 'tuesday'),
-      wednesday: scheduleDayString(dayTimes, 'wednesday'),
-      thursday: scheduleDayString(dayTimes, 'thursday'),
-      friday: scheduleDayString(dayTimes, 'friday'),
-      saturday: scheduleDayString(dayTimes, 'saturday'),
-      sunday: scheduleDayString(dayTimes, 'sunday'),
-    },
+  await matching.upsertSchedule({
+    userId: user.id,
+    monday: scheduleDayString(dayTimes, 'monday'),
+    tuesday: scheduleDayString(dayTimes, 'tuesday'),
+    wednesday: scheduleDayString(dayTimes, 'wednesday'),
+    thursday: scheduleDayString(dayTimes, 'thursday'),
+    friday: scheduleDayString(dayTimes, 'friday'),
+    saturday: scheduleDayString(dayTimes, 'saturday'),
+    sunday: scheduleDayString(dayTimes, 'sunday'),
   });
 
   log.info('persistRacketProfile', 'matching profile and schedule saved', { userId: user.id });

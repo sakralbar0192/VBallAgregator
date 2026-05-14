@@ -1,6 +1,10 @@
 import { Game, GameStatus } from '../../domain/game.js';
 import { BasePrismaRepository } from './base-repository.js';
 import { prisma } from '../prisma.js';
+import { prismaForContext } from '../prisma-client-for-context.js';
+import type { QueryContext } from '../../../../contracts/src/query-context.js';
+import type { DbTransaction } from '../../../../contracts/src/query-context.js';
+import type { Prisma } from '@prisma/client';
 
 /**
  * Интерфейс репозитория для работы с играми
@@ -11,14 +15,14 @@ export interface GameRepo {
    * @param id - Идентификатор игры
    * @returns Игра или null, если не найдена
    */
-  findById(id: string): Promise<Game | null>;
+  findById(id: string, ctx?: QueryContext): Promise<Game | null>;
 
   /**
    * Подсчитывает количество подтвержденных регистраций на игру
    * @param gameId - Идентификатор игры
    * @returns Количество подтвержденных регистраций
    */
-  countConfirmed(gameId: string): Promise<number>;
+  countConfirmed(gameId: string, ctx?: QueryContext): Promise<number>;
 
   /**
    * Создает новую игру
@@ -49,11 +53,9 @@ export interface GameRepo {
   findConflictingGame(venueId: string, startsAt: Date): Promise<Game | null>;
 
   /**
-   * Выполняет функцию в транзакции
-   * @param fn - Функция для выполнения в транзакции
-   * @returns Результат выполнения функции
+   * Интерактивная транзакция Prisma; callback получает `tx` для всех операций внутри коммита.
    */
-  transaction<T>(fn: () => Promise<T>): Promise<T>;
+  transaction<T>(fn: (ctx: { tx: DbTransaction }) => Promise<T>): Promise<T>;
 }
 
 /**
@@ -70,11 +72,12 @@ export class PrismaGameRepo extends BasePrismaRepository implements GameRepo {
   /**
    * @inheritDoc
    */
-  async findById(id: string): Promise<Game | null> {
+  async findById(id: string, ctx?: QueryContext): Promise<Game | null> {
     this.validateRequired(id, 'id');
 
     return this.executeWithLogging('findById', 'games', 'SELECT', { id }, async () => {
-      const game = await prisma.game.findUnique({ where: { id } });
+      const db = prismaForContext(ctx);
+      const game = await db.game.findUnique({ where: { id } });
       if (!game) return null;
 
       return new Game(
@@ -93,11 +96,12 @@ export class PrismaGameRepo extends BasePrismaRepository implements GameRepo {
   /**
    * @inheritDoc
    */
-  async countConfirmed(gameId: string): Promise<number> {
+  async countConfirmed(gameId: string, ctx?: QueryContext): Promise<number> {
     this.validateRequired(gameId, 'gameId');
 
     return this.executeWithLogging('countConfirmed', 'registrations', 'COUNT', { gameId }, async () => {
-      return prisma.registration.count({
+      const db = prismaForContext(ctx);
+      return db.registration.count({
         where: { gameId, status: 'confirmed' }
       });
     });
@@ -212,7 +216,7 @@ export class PrismaGameRepo extends BasePrismaRepository implements GameRepo {
   /**
    * @inheritDoc
    */
-  override async transaction<T>(fn: () => Promise<T>): Promise<T> {
-    return super.transaction(fn);
+  override async transaction<T>(fn: (ctx: { tx: DbTransaction }) => Promise<T>): Promise<T> {
+    return prisma.$transaction(async (tx: Prisma.TransactionClient) => fn({ tx }));
   }
 }

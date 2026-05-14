@@ -45,7 +45,7 @@ jobs:
     - name: TypeScript build
       run: npm run build
     - name: Verify worker bundles
-      run: test -f dist/apps/outbox-publisher/index.js && test -f dist/apps/notification-worker/index.js
+      run: test -f dist/apps/outbox-publisher/index.js && test -f dist/apps/notification-worker/index.js && test -f dist/apps/scheduler-service/index.js
 
   test:
     runs-on: ubuntu-latest

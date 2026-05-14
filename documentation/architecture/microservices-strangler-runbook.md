@@ -15,7 +15,12 @@
 Сервисы `rabbitmq`, `outbox-publisher`, `notification-worker` в [docker-compose.yml](../../docker-compose.yml). Переменные:
 
 - `RABBITMQ_URL` — для publisher и worker.
-- `OUTBOX_RECORD_ENABLED=true` — запись строк в outbox после успешной обработки in-process handlers (см. `EventBus.publish`).
+- `OUTBOX_RECORD_ENABLED=true` — запись в `messaging_outbox` в **той же транзакции**, что и мутации домена (join/leave/markPayment и др.), затем outbox-publisher → RabbitMQ; in-process handlers выполняются **после коммита** (`EventBus.dispatchHandlers`).
+
+## S2S и internal HTTP
+
+- Сервисы вызывают read API монолита с префиксом `/internal` и заголовком `Authorization: Bearer <INTERNAL_API_TOKEN>`.
+- В проде: секреты из Vault/Kubernetes Secrets, отдельные токены на клиента, ротация. Спецификация: [internal-read-api.yaml](../../openapi/internal-read-api.yaml).
 
 ## Откат
 

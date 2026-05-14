@@ -2,6 +2,7 @@ import { DomainEvent as TypedDomainEvent } from './types.js';
 import { LoggerFactory } from './layer-logger.js';
 import { LOG_MESSAGES } from './logging-messages.js';
 import { recordDomainEventToOutbox } from '../infrastructure/messaging-outbox-record.js';
+import type { Prisma } from '@prisma/client';
 
 export type DomainEvent = TypedDomainEvent & {
   occurredAt: Date;
@@ -68,6 +69,44 @@ export class EventBus {
           error: err instanceof Error ? err.message : String(err),
         });
       }
+    }
+  }
+
+  /** Запись outbox внутри уже открытой Prisma interactive-транзакции (без in-process handlers). */
+  async appendOutbox(tx: unknown, event: DomainEvent): Promise<void> {
+    if (process.env.OUTBOX_RECORD_ENABLED !== 'true') {
+      return;
+    }
+    try {
+      const typed = event as TypedDomainEvent & { occurredAt: Date };
+      await recordDomainEventToOutbox(
+        { type: event.type, occurredAt: event.occurredAt, payload: typed.payload },
+        null,
+        tx as Prisma.TransactionClient
+      );
+    } catch (err) {
+      logger.warn('appendOutbox', 'messaging_outbox_record_failed', {
+        eventType: event.type,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
+  }
+
+  /** In-process handlers только (после успешного коммита бизнес-транзакции). */
+  async dispatchHandlers(event: DomainEvent): Promise<void> {
+    const handlers = this.handlers.get(event.type) || [];
+    const results = await Promise.allSettled(
+      handlers.map(handler => this.handleWithRetry(handler, event))
+    );
+    const failures = results.filter(r => r.status === 'rejected');
+    if (failures.length > 0) {
+      logger.error('dispatchHandlers', LOG_MESSAGES.INFRASTRUCTURE_SERVICES.EVENT_BUS_PROCESSING_FAILURES, new Error('Event processing failed'), {
+        eventType: event.type,
+        failures: failures.length,
+        totalHandlers: handlers.length,
+      });
+      this.deadLetterQueue.push(event);
     }
   }
 

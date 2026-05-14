@@ -6,13 +6,23 @@ import { LOG_MESSAGES } from './logging-messages.js';
 
 const logger = LoggerFactory.external('scheduler-service');
 
+export type SchedulerServiceOptions = {
+  /**
+   * When false, BullMQ `Worker` instances are not started (producer-only / bot process).
+   * Separate `scheduler-service` process should pass true (default).
+   */
+  runBullMqWorkers?: boolean;
+};
+
 export class SchedulerService {
   private reminderQueue: Queue;
   private paymentReminderQueue: Queue;
   private priorityWindowQueue: Queue;
   private workers: Worker[] = [];
+  private readonly runBullMqWorkers: boolean;
 
-  constructor(private eventBus: EventBus) {
+  constructor(private eventBus: EventBus, options?: SchedulerServiceOptions) {
+    this.runBullMqWorkers = options?.runBullMqWorkers !== false;
     this.reminderQueue = new Queue('game-reminders', {
       connection: config.redis,
       defaultJobOptions: {
@@ -130,6 +140,10 @@ export class SchedulerService {
   }
 
   initializeWorkers(): void {
+    if (!this.runBullMqWorkers) {
+      logger.info('initializeWorkers', 'BullMQ workers skipped (producer-only process)');
+      return;
+    }
     // Game reminders worker
     const reminderWorker = new Worker(
       'game-reminders',

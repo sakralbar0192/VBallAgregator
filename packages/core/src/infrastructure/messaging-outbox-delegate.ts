@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import type { PrismaClient, Prisma } from '@prisma/client';
 
 /** Строка outbox (минимум полей для publisher / record). */
 export type MessagingOutboxRow = {
@@ -42,8 +42,8 @@ export type MessagingOutboxDelegate = {
 
 const DELEGATE_KEY = 'messagingOutbox';
 
-export function getMessagingOutboxDelegate(prisma: PrismaClient): MessagingOutboxDelegate {
-  const raw = prisma as unknown as Record<string, MessagingOutboxDelegate | undefined>;
+export function getMessagingOutboxDelegate(prismaClient: PrismaClient | Prisma.TransactionClient): MessagingOutboxDelegate {
+  const raw = prismaClient as unknown as Record<string, MessagingOutboxDelegate | undefined>;
   const delegate = raw[DELEGATE_KEY];
   if (!delegate || typeof delegate.findMany !== 'function') {
     throw new Error(

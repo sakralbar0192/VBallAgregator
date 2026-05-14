@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { initTelemetry } from '../../packages/core/src/shared/telemetry.js';
 import { validateConfig, config } from '../../packages/core/src/shared/config.js';
 import { createBot } from '../../packages/bot-volley/src/bot/create-bot.js';
-import { SchedulerService } from '../../packages/core/src/shared/scheduler-service.js';
+import { ApplicationServiceFactory } from '../../packages/core/src/application/services/application-service-factory.js';
 import { EventBus } from '../../packages/core/src/shared/event-bus.js';
 import { HealthCheckService } from '../../packages/core/src/infrastructure/health.js';
 import { registerEventHandlers } from '../../packages/core/src/shared/event-handlers.js';
@@ -13,6 +13,7 @@ import { prisma } from '../../packages/core/src/infrastructure/prisma.js';
 import { createClient } from 'redis';
 import { startApiServer } from '../../packages/core/src/api/server.js';
 import type { Telegraf } from 'telegraf';
+import type { SchedulerService } from '../../packages/core/src/shared/scheduler-service.js';
 
 /** Не логировать секрет токена из URL Telegram API в консоль */
 function redactTelegramBotUrl(text: string): string {
@@ -39,7 +40,7 @@ async function startApp() {
     const bot = await createBot({ sessionRedis: redisClient as never });
 
     const eventBus = EventBus.getInstance();
-    const schedulerService = new SchedulerService(eventBus);
+    const schedulerService = ApplicationServiceFactory.getInstance().getSchedulerService();
     const healthService = new HealthCheckService(
       prisma,
       redisClient,
@@ -49,16 +50,13 @@ async function startApp() {
     await registerEventHandlers(eventBus);
     startupLogger.info('registerEventHandlers', LOG_MESSAGES.STARTUP.EVENT_HANDLERS_REGISTERED);
 
-    schedulerService.initializeWorkers();
-    startupLogger.info('initializeWorkers', LOG_MESSAGES.STARTUP.QUEUE_WORKERS_INITIALIZED);
-
     const health = await healthService.checkHealth();
     if (health.status === 'unhealthy') {
       throw new Error(`System unhealthy: ${JSON.stringify(health.checks)}`);
     }
     startupLogger.info('checkHealth', LOG_MESSAGES.STARTUP.HEALTH_CHECK_PASSED, { status: health.status });
 
-    apiServer = await startApiServer({ healthCheckService: healthService });
+    apiServer = await startApiServer({ healthCheckService: healthService, prisma });
     startupLogger.info('startApiServer', 'HTTP API listening');
 
     await bot.launch();

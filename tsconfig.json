@@ -20,6 +20,7 @@
     "apps/server/**/*.ts",
     "apps/outbox-publisher/**/*.ts",
     "apps/notification-worker/**/*.ts",
+    "apps/scheduler-service/**/*.ts",
     "packages/core/src/**/*.ts",
     "packages/bot-volley/src/**/*.ts",
     "packages/bot-racket/src/**/*.ts",

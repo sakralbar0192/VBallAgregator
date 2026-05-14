@@ -9,6 +9,8 @@
   import { ValidationError } from '../domain/errors/validation-error.js';
   import { GameAlreadyStartedError } from '../domain/errors/game-errors.js';
   import { prisma } from '../infrastructure/prisma.js';
+  import type { Prisma } from '@prisma/client';
+  import type { DomainEvent } from '../shared/event-bus.js';
   import { PrismaJoinGamePriorityContextReader } from '../infrastructure/prisma-join-game-priority-context-reader.js';
   import { ApplicationServiceFactory } from './services/application-service-factory.js';
   import { OrganizerApplicationService } from './services/organizer-service.js';
@@ -124,32 +126,54 @@
       { correlationId }
     );
 
-    return prisma.$transaction(async (tx: any) => {
-      const reg = await registrationRepo.get(gameId, userId);
-      if (!reg) return { ok: true };
-      if (reg.status === RegStatus.canceled) return { ok: true };
+    let cancelEvent: DomainEvent | null = null;
+    let promotedEvent: DomainEvent | null = null;
+
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const ctx = { tx };
+      const reg = await registrationRepo.get(gameId, userId, ctx);
+      if (!reg) return;
+      if (reg.status === RegStatus.canceled) return;
 
       reg.cancel();
-      await registrationRepo.upsert(reg);
+      await registrationRepo.upsert(reg, ctx);
       useCaseLogger.info('leaveGame', 'Пользователь вышел из игры',
         { gameId, userId },
         { correlationId }
       );
-      await eventBus.publish({ type: 'RegistrationCanceled', occurredAt: new Date(), id: '', payload: { gameId, userId } });
+      cancelEvent = {
+        type: 'RegistrationCanceled',
+        occurredAt: new Date(),
+        id: '',
+        payload: { gameId, userId },
+      };
+      await eventBus.appendOutbox(tx, cancelEvent);
 
-      // Продвинуть следующего из списка ожидания
-      const next = await registrationRepo.firstWaitlisted(gameId);
+      const next = await registrationRepo.firstWaitlisted(gameId, ctx);
       if (next) {
-        await registrationRepo.promoteToConfirmed(next.id);
+        await registrationRepo.promoteToConfirmed(next.id, ctx);
         useCaseLogger.info('leaveGame', 'Пользователь из списка ожидания повышен до подтвержденного',
           { gameId, promotedUserId: next.userId },
           { correlationId }
         );
-        await eventBus.publish({ type: 'WaitlistedPromoted', occurredAt: new Date(), id: '', payload: { gameId, userId: next.userId } });
+        promotedEvent = {
+          type: 'WaitlistedPromoted',
+          occurredAt: new Date(),
+          id: '',
+          payload: { gameId, userId: next.userId },
+        };
+        await eventBus.appendOutbox(tx, promotedEvent);
       }
-
-      return { ok: true };
     });
+
+    if (cancelEvent) {
+      await eventBus.dispatchHandlers(cancelEvent);
+    }
+    if (promotedEvent) {
+      await eventBus.dispatchHandlers(promotedEvent);
+    }
+
+    return { ok: true };
   }
 
   /**
@@ -204,7 +228,6 @@
 
     // Use new SchedulerService
     await schedulerService.scheduleGameReminder24h(gameId, game.startsAt);
-    await schedulerService.initializeWorkers(); // Ensure workers are running
 
     useCaseLogger.info('scheduleGameReminders', 'Напоминания игры запланированы',
       { gameId },

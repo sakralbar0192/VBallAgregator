@@ -1,6 +1,8 @@
 import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
+import type { PrismaClient } from '@prisma/client';
 import { healthRoutes } from './health-endpoint.js';
+import { internalRoutes } from './internal-routes.js';
 import { LoggerFactory } from '../shared/layer-logger.js';
 import { LOG_MESSAGES } from '../shared/logging-messages.js';
 import type { HealthCheckService } from '../infrastructure/health.js';
@@ -15,6 +17,7 @@ export function getApiPort(): number {
 
 export async function createServer(options: {
   healthCheckService: HealthCheckService;
+  prisma: PrismaClient;
 }): Promise<FastifyInstance> {
   const fastify = Fastify({
     logger: true,
@@ -23,6 +26,11 @@ export async function createServer(options: {
 
   await fastify.register(healthRoutes, {
     healthCheckService: options.healthCheckService,
+  });
+
+  await fastify.register(internalRoutes, {
+    prisma: options.prisma,
+    internalApiToken: process.env.INTERNAL_API_TOKEN,
   });
 
   fastify.get('/', async () => ({
@@ -37,6 +45,7 @@ export async function createServer(options: {
 
 export async function startApiServer(options: {
   healthCheckService: HealthCheckService;
+  prisma: PrismaClient;
 }): Promise<FastifyInstance> {
   const server = await createServer(options);
   const port = getApiPort();

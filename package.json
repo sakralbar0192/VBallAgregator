@@ -26,10 +26,15 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "check": "npm run lint && npm run typecheck",
     "worker:outbox": "node dist/apps/outbox-publisher/index.js",
-    "worker:notification": "node dist/apps/notification-worker/index.js"
+    "worker:notification": "node dist/apps/notification-worker/index.js",
+    "worker:scheduler": "node dist/apps/scheduler-service/index.js"
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.57.2",
+    "@opentelemetry/resources": "^1.30.1",
+    "@opentelemetry/sdk-node": "^0.57.2",
+    "@opentelemetry/semantic-conventions": "^1.41.1",
     "@prisma/client": "^6.19.0",
     "@types/node": "^24.9.2",
     "@types/uuid": "^11.0.0",

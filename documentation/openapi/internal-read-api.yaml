@@ -1,0 +1,86 @@
+openapi: 3.0.3
+info:
+  title: VBallAgregator internal read API
+  version: 0.1.0
+  description: |
+    Read-only HTTP endpoints for service-to-service calls (notification-worker, etc.).
+    Authenticate with `Authorization: Bearer <INTERNAL_API_TOKEN>`.
+servers:
+  - url: http://localhost:3001
+    description: Local API
+security:
+  - InternalBearer: []
+paths:
+  /internal/users/by-telegram/{telegramId}:
+    get:
+      summary: Resolve user by Telegram id
+      operationId: getUserByTelegramId
+      parameters:
+        - name: telegramId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^-?[0-9]+$'
+          description: Telegram numeric user id as string (supports large ids).
+      responses:
+        '200':
+          description: User found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalUserSummary'
+        '401':
+          description: Missing or invalid Authorization header
+        '404':
+          description: No user with this telegram id
+  /internal/users/by-id/{userId}:
+    get:
+      summary: Resolve user by internal UUID
+      operationId: getUserById
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: User found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalUserSummary'
+        '401':
+          description: Missing or invalid Authorization header
+        '404':
+          description: No user with this id
+components:
+  securitySchemes:
+    InternalBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque-token
+  schemas:
+    InternalUserSummary:
+      type: object
+      required:
+        - userId
+        - telegramId
+        - name
+      properties:
+        userId:
+          type: string
+          format: uuid
+        telegramId:
+          type: string
+          description: Telegram id as string (JSON-safe bigint)
+        name:
+          type: string
+        levelTag:
+          type: string
+          nullable: true
+        activeSport:
+          type: string
+          enum: [volleyball, racket]

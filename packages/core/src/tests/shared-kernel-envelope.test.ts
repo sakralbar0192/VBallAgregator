@@ -1,5 +1,9 @@
 import { describe, expect, it } from '@jest/globals';
-import { buildEnvelope, inferAggregateIdFromPayload } from '../../../shared-kernel/src/index.js';
+import {
+  buildEnvelope,
+  domainEventEnvelopeSchema,
+  inferAggregateIdFromPayload,
+} from '../../../shared-kernel/src/index.js';
 
 describe('shared-kernel envelope', () => {
   it('builds envelope with schema version', () => {
@@ -27,7 +31,29 @@ describe('shared-kernel envelope', () => {
     expect(e.payload).toEqual({ gameId: 'g', telegramId: '123' });
   });
 
-  it('infers aggregate from gameId', () => {
-    expect(inferAggregateIdFromPayload('X', { gameId: 'abc' })).toBe('abc');
+  it('parses producer JSON as consumer contract (round-trip)', () => {
+    const payload = { gameId: 'g1', userId: 'u1', status: 'confirmed' };
+    const built = buildEnvelope({
+      eventType: 'PlayerJoined',
+      payload,
+      occurredAt: new Date('2026-05-14T12:00:00.000Z'),
+      correlationId: 'c1',
+      aggregateId: 'g1',
+    });
+    const wire = JSON.parse(JSON.stringify(built)) as unknown;
+    const parsed = domainEventEnvelopeSchema.parse(wire);
+    expect(parsed.eventType).toBe('PlayerJoined');
+    expect(parsed.payload).toEqual(payload);
+  });
+
+  it('rejects invalid envelope (consumer contract)', () => {
+    expect(() =>
+      domainEventEnvelopeSchema.parse({
+        eventType: '',
+        schemaVersion: 1,
+        occurredAt: '2026-05-14T12:00:00.000Z',
+        payload: {},
+      })
+    ).toThrow();
   });
 });

@@ -3,6 +3,8 @@
 ## Обзор
 VBallAgregator построен на модульной архитектуре, которая обеспечивает гибкость, масштабируемость и простоту поддержки. Каждый модуль отвечает за определенную функциональность и может быть разработан, протестирован и развернут независимо.
 
+**Где искать каркас процесса и пакетов:** [implementation-architecture.md](implementation-architecture.md). Этот файл углубляется в **модули Telegram-бота** (`BotModuleRegistry`, команды, callback) и сопутствующие слои на концептуальном уровне.
+
 ## Содержание
 - [Принципы архитектуры](#принципы-архитектуры)
 - [Модульная структура](#модульная-структура)
@@ -36,16 +38,25 @@ VBallAgregator построен на модульной архитектуре, 
 ## Модульная структура
 
 ```
-src/
-├── api/                    # HTTP API слой
-├── application/            # Варианты использования
-├── bot/                    # Telegram бот
-│   ├── modules/           # Модули бота
-│   ├── handlers/          # Обработчики команд
-│   └── common/            # Общие компоненты
-├── domain/                # Доменные модели и правила
-├── infrastructure/        # Внешние зависимости
-└── shared/                # Общие утилиты
+apps/server/              # Точка входа процесса (бот + API + scheduler)
+
+packages/core/src/
+├── api/
+├── application/
+├── domain/
+├── infrastructure/
+├── shared/
+└── tests/
+
+packages/bot-volley/src/bot/
+├── modules/
+├── registration/
+├── game-management/
+└── ...
+
+packages/bot-racket/src/
+├── profile-setup/
+└── racket-scenes.ts
 ```
 
 ### Уровни архитектуры
@@ -81,6 +92,10 @@ src/
 ## Модули бота
 
 Бот-система VBallAgregator построена на модульной архитектуре с использованием паттерна `BotModuleRegistry`. Каждый модуль инкапсулирует определенную функциональность и регистрирует свои обработчики команд и callback'ов независимо.
+
+### Пакет `packages/bot-racket`
+
+Ракеточные Telegraf-сцены живут в отдельном пакете (импорт из `bot-volley`, например `getRacketScenes()` в `create-bot.ts`). Мастер профиля для подбора: `packages/bot-racket/src/profile-setup/` (фабрика шагов, шаги, сервисы, `createRacketProfileWizardScene()`), сцена с id **`racket-profile`** (вход из `RegistrationHandler.handleSportRacket` и reply-клавиатуры «Настроить профиль» / «Редактировать профиль» при `activeSport === racket`).
 
 ### RegistrationModule (Модуль регистрации)
 ```typescript

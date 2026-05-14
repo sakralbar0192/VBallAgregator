@@ -1,6 +1,6 @@
 # 🏐 VBallAgregator
 
-Telegram-бот для автоматизации организации волейбольных игр. Система помогает игрокам находить подходящие игры, а организаторам — управлять набором участников, отслеживать оплаты и координировать проведение игр.
+Мульти-спорт Telegram-бот (волейбол, ракеточные направления и др.) для организации игр и подбора участников. Система помогает игрокам находить подходящие игры, а организаторам — управлять набором участников, отслеживать оплаты и координировать проведение игр.
 
 ## 🚀 Быстрый старт
 
@@ -18,7 +18,7 @@ docker compose up -d db redis
 cp .env.example .env
 # Укажите TELEGRAM_BOT_TOKEN и при необходимости API_PORT (по умолчанию 3001)
 
-# Настройка базы данных
+# Настройка базы данных (схема Prisma: packages/core/prisma)
 npm run prisma:migrate
 npm run prisma:generate
 
@@ -44,11 +44,14 @@ curl "http://localhost:${API_PORT:-3001}/health"
 - [👨‍💻 Developer Guide](documentation/guides/developer-guide.md) - Полная техническая документация
 
 #### **Для существующей команды**
-- [🏗️ Архитектура](documentation/architecture/overview.md) - Обзор системной архитектуры
+- [Продукт и возможности](documentation/business/product-and-capabilities.md) — scope по ролям и видам спорта
+- [Архитектура реализации](documentation/architecture/implementation-architecture.md) — монорепо, запуск, сцены
+- [🏗️ Архитектура (обзор)](documentation/architecture/overview.md) - Обзор и ссылки на детали
 - [📊 Пользовательские сценарии](documentation/business/user-scenarios.md) - Все сценарии в одном месте
 - [🔧 Стандарты разработки](documentation/development/coding-standards.md) - Правила и стандарты
 
 #### **Для пользователей**
+- [Продукт и возможности](documentation/business/product-and-capabilities.md) — краткая матрица функций
 - [📱 Руководство пользователя](documentation/guides/user-guide.md) - Как использовать систему
 - [❓ FAQ и устранение проблем](documentation/reference/faq.md) - Частые вопросы и решения
 
@@ -69,7 +72,8 @@ curl "http://localhost:${API_PORT:-3001}/health"
 ### 🏗️ [Architecture - Архитектура](documentation/architecture/)
 Техническая архитектура системы
 
-- [System Overview](documentation/architecture/overview.md) - Общий обзор архитектуры
+- [System Overview](documentation/architecture/overview.md) - Краткий обзор
+- [Implementation Architecture](documentation/architecture/implementation-architecture.md) - Реализация
 - [Modules](documentation/architecture/modules.md) - Модули и их взаимодействие
 - [Data Model](documentation/architecture/data-model.md) - Модель данных и БД
 - [API Reference](documentation/architecture/api-reference.md) - Справочник API
@@ -87,6 +91,7 @@ curl "http://localhost:${API_PORT:-3001}/health"
 Бизнес-логика и пользовательские сценарии
 
 - [Product Vision](documentation/business/product-vision.md) - Видение продукта
+- [Продукт и возможности](documentation/business/product-and-capabilities.md) - Матрица функций и MVP
 - [User Scenarios](documentation/business/user-scenarios.md) - Пользовательские сценарии
 - [Requirements](documentation/business/requirements.md) - Требования к системе
 
@@ -102,7 +107,8 @@ curl "http://localhost:${API_PORT:-3001}/health"
 ## 🔍 Поиск по документации
 
 ### Популярные темы:
-- **Архитектура**: [Clean Architecture](documentation/architecture/overview.md), [Модули](documentation/architecture/modules.md)
+- **Продукт**: [Продукт и возможности](documentation/business/product-and-capabilities.md), [User guide](documentation/guides/user-guide.md)
+- **Архитектура**: [overview](documentation/architecture/overview.md), [implementation-architecture](documentation/architecture/implementation-architecture.md), [Модули](documentation/architecture/modules.md)
 - **Разработка**: [Стандарты кода](documentation/development/coding-standards.md), [Логирование](documentation/development/comprehensive-logging-guide.md)
 - **Пользовательские сценарии**: [Регистрация](documentation/business/user-scenarios.md#регистрация), [Игры](documentation/business/user-scenarios.md#игры)
 - **DevOps**: [Деплой](documentation/guides/deployment-guide.md), [Мониторинг](documentation/reference/troubleshooting.md)

@@ -1,0 +1,7 @@
+{
+  "name": "@multi-sport/bot-racket",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Telegraf Scenes: ракеточные сценарии (matching)"
+}

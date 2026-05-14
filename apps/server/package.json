@@ -1,0 +1,7 @@
+{
+  "name": "@multi-sport/server",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Точка входа процесса (бот + API + планировщик)"
+}

@@ -3,21 +3,21 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "main": "dist/index.js",
+  "main": "dist/apps/server/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "dev": "tsx -r dotenv/config index.ts",
+    "dev": "tsx -r dotenv/config apps/server/index.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/index.js",
-    "prisma:generate": "node -r dotenv/config ./node_modules/.bin/prisma generate && node scripts/ensure-prisma-client-cjs.mjs",
-    "prisma:migrate": "node -r dotenv/config ./node_modules/.bin/prisma migrate dev",
-    "prisma:deploy": "node -r dotenv/config ./node_modules/.bin/prisma migrate deploy",
-    "prisma:studio": "node -r dotenv/config ./node_modules/.bin/prisma studio",
+    "start": "node dist/apps/server/index.js",
+    "prisma:generate": "node -r dotenv/config ./node_modules/.bin/prisma generate --schema packages/core/prisma/schema.prisma && node scripts/ensure-prisma-client-cjs.mjs",
+    "prisma:migrate": "node -r dotenv/config ./node_modules/.bin/prisma migrate dev --schema packages/core/prisma/schema.prisma",
+    "prisma:deploy": "node -r dotenv/config ./node_modules/.bin/prisma migrate deploy --schema packages/core/prisma/schema.prisma",
+    "prisma:studio": "node -r dotenv/config ./node_modules/.bin/prisma studio --schema packages/core/prisma/schema.prisma",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "test": "node -r dotenv/config --experimental-vm-modules ./node_modules/.bin/jest --runInBand --selectProjects unit-integration --coverage && node -r dotenv/config --experimental-vm-modules ./node_modules/.bin/jest --runInBand --selectProjects e2e",
     "test:unit": "node -r dotenv/config --experimental-vm-modules ./node_modules/.bin/jest --runInBand --selectProjects unit-integration --testPathIgnorePatterns=/integration\\.test\\.ts$/",
-    "test:integration": "node -r dotenv/config --experimental-vm-modules ./node_modules/.bin/jest --runInBand --selectProjects unit-integration src/tests/integration.test.ts",
+    "test:integration": "node -r dotenv/config --experimental-vm-modules ./node_modules/.bin/jest --runInBand --selectProjects unit-integration packages/core/src/tests/integration.test.ts",
     "test:e2e": "node -r dotenv/config --experimental-vm-modules ./node_modules/.bin/jest --runInBand --selectProjects e2e",
     "test:ci": "SKIP_INTEGRATION_TESTS=true node -r dotenv/config --experimental-vm-modules ./node_modules/.bin/jest --runInBand --selectProjects unit-integration",
     "test:watch": "node -r dotenv/config --experimental-vm-modules ./node_modules/.bin/jest --runInBand --watch",
@@ -51,5 +51,9 @@
     "ts-jest": "^29.4.5",
     "tsx": "^4.20.6",
     "typescript-eslint": "^8.59.2"
-  }
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ]
 }

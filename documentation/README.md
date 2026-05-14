@@ -7,11 +7,14 @@
 - [👨‍💻 Developer Guide](guides/developer-guide.md) - Полная техническая документация
 
 ### **Для существующей команды**
-- [🏗️ Архитектура](architecture/overview.md) - Обзор системной архитектуры
+- [Продукт и возможности](business/product-and-capabilities.md) — scope по ролям и видам спорта
+- [Архитектура реализации](architecture/implementation-architecture.md) — монорепо, запуск, слои, сцены
+- [🏗️ Архитектура (краткий обзор)](architecture/overview.md) — навигация по архитектурным документам
 - [📊 Пользовательские сценарии](business/user-scenarios.md) - Все сценарии в одном месте
 - [🔧 Стандарты разработки](development/coding-standards.md) - Правила и стандарты
 
 ### **Для пользователей**
+- [Продукт и возможности](business/product-and-capabilities.md) — что умеет бот по спортам и ролям
 - [📱 Руководство пользователя](guides/user-guide.md) - Как использовать систему
 - [❓ FAQ и устранение проблем](reference/faq.md) - Частые вопросы и решения
 
@@ -34,7 +37,8 @@
 ### 🏗️ [Architecture - Архитектура](architecture/)
 Техническая архитектура системы
 
-- [System Overview](architecture/overview.md) - Общий обзор архитектуры
+- [System Overview](architecture/overview.md) - Краткий обзор и навигация
+- [Implementation Architecture](architecture/implementation-architecture.md) - Пакеты, runtime, Telegram
 - [Modules](architecture/modules.md) - Модули и их взаимодействие
 - [Data Model](architecture/data-model.md) - Модель данных и БД
 - [API Reference](architecture/api-reference.md) - Справочник API
@@ -52,6 +56,7 @@
 Бизнес-логика и пользовательские сценарии
 
 - [Product Vision](business/product-vision.md) - Видение продукта
+- [Product and capabilities](business/product-and-capabilities.md) - Возможности и границы MVP
 - [User Scenarios](business/user-scenarios.md) - Пользовательские сценарии
 - [Requirements](business/requirements.md) - Требования к системе
 
@@ -67,7 +72,8 @@
 ## 🔍 Поиск по документации
 
 ### Популярные темы:
-- **Архитектура**: [Clean Architecture](architecture/overview.md), [Модули](architecture/modules.md)
+- **Продукт**: [Продукт и возможности](business/product-and-capabilities.md), [User guide](guides/user-guide.md)
+- **Архитектура**: [overview](architecture/overview.md), [implementation-architecture](architecture/implementation-architecture.md), [Модули](architecture/modules.md)
 - **Разработка**: [Стандарты кода](development/coding-standards.md), [Тестирование](development/testing-strategy.md)
 - **Пользовательские сценарии**: [Регистрация](business/user-scenarios.md#регистрация), [Игры](business/user-scenarios.md#игры)
 - **DevOps**: [Деплой](guides/deployment-guide.md), [Мониторинг](reference/troubleshooting.md)
@@ -75,7 +81,7 @@
 ### Часто задаваемые вопросы:
 - [Как добавить новый модуль?](architecture/modules.md#добавление-нового-модуля)
 - [Как создать пользовательский сценарий?](development/workflow.md#создание-сценариев)
-- [Как настроить логирование?](guides/developer-guide.md#логирование)
+- [Как настроить логирование?](development/comprehensive-logging-guide.md)
 - [Как развернуть систему?](guides/deployment-guide.md#установка)
 
 ---
@@ -84,10 +90,10 @@
 
 | Раздел | Полнота | Актуальность | Последнее обновление |
 |--------|---------|--------------|---------------------|
-| Guides | 100% | 95% | 2025-11-24 |
-| Architecture | 100% | 90% | 2025-11-24 |
-| Development | 100% | 85% | 2025-11-24 |
-| Business | 100% | 90% | 2025-11-24 |
+| Guides | 100% | 95% | 2026-05-14 |
+| Architecture | 100% | 95% | 2026-05-14 |
+| Development | 100% | 85% | 2026-05-14 |
+| Business | 100% | 95% | 2026-05-14 |
 | Reference | 100% | 80% | 2025-11-24 |
 
 **Легенда:**
@@ -134,6 +140,4 @@
 
 ---
 
-**Последнее обновление:** 2025-11-24 07:51  
-**Версия документации:** 1.0  
-**Статус:** Актуальная ✅
+**Последнее обновление:** 2026-05-14

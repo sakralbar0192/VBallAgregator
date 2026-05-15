@@ -3,6 +3,7 @@ import { BaseHandler } from '../common/base-handler.js';
 import { LoggerFactory } from '../../../../core/src/shared/layer-logger.js';
 import { CommandHandlers } from '../command-handlers.js';
 import { CallbackDataParser } from '../common/callback-parser.js';
+import { sessionManager } from '../../../../core/src/shared/session-manager.js';
 
 /**
  * Обработчик выбора организаторов
@@ -77,6 +78,13 @@ export class OrganizerSelectionHandler extends BaseHandler {
         ? '🔗 Выбор организаторов сохранен. Организаторы получат запрос на подтверждение.'
         : '🔗 Все связи с организаторами удалены.';
       await ctx.editMessageText(message);
+
+      const sm = sessionManager.getCurrentSession();
+      if (sm?.data?.onbAfterOrganizersContinue) {
+        sm.data.onbAfterOrganizersContinue = false;
+        const { OnboardingHandlers } = await import('../registration/onboarding-handlers.js');
+        await OnboardingHandlers.finishVolleyballAfterOrganizers(ctx);
+      }
     } catch (error: any) {
       OrganizerSelectionHandler.logger.error('handleOrganizersDone', 'Error saving organizer selection', error);
       await ctx.answerCbQuery('Ошибка при сохранении выбора');

@@ -2,6 +2,8 @@ import { Markup } from 'telegraf';
 import type { WeekDay, WeekDayAction, WeekDayStepName } from '../types.js';
 import type { EntityInfo } from '../step-wizard-types.js';
 import turnDataIntoAction from '../utils/turn-data-into-action.js';
+import { TENNIS_PROFILE_WIZARD_BACK_CB, TennisStepAction } from '../tennis-callbacks.js';
+import { TennisText } from '../tennis-text.js';
 
 export default class WeekDayService {
   static WeekDayStepName: WeekDayStepName = 'week-day';
@@ -32,7 +34,8 @@ export default class WeekDayService {
     const daysKeyboard = keyboardStructure.map(row =>
       row.map(weekDay => Markup.button.callback(...createDayButton(weekDay))),
     );
-    daysKeyboard.push([Markup.button.callback('Готово', 'week-day_done')]);
+    daysKeyboard.push([Markup.button.callback(TennisText.done, TennisStepAction.weekDayDone)]);
+    daysKeyboard.push([Markup.button.callback(TennisText.back, TENNIS_PROFILE_WIZARD_BACK_CB)]);
     return daysKeyboard;
   }
 

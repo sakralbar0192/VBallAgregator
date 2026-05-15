@@ -40,7 +40,7 @@ enum GamePlayerResponseType {
 
 enum SportKind {
   volleyball
-  racket
+  tennis
 }
 
 model User {
@@ -48,6 +48,8 @@ model User {
    telegramId  BigInt   @unique
    name        String
    levelTag    String?
+   gender      String?
+   ageBand     String?
    activeSport SportKind @default(volleyball)
    createdAt   DateTime @default(now())
 
@@ -57,11 +59,30 @@ model User {
    notificationPreferences UserNotificationPreferences?
    playerOrganizers PlayerOrganizer[] @relation("PlayerToOrganizers")
    gamePlayerResponses GamePlayerResponse[]
-   matchingProfile     MatchingProfile?
-   matchingSchedule    MatchingSchedule?
+   matchingProfiles     MatchingProfile[]
+   matchingSchedules    MatchingSchedule[]
+   sportProfiles        UserSportProfile[]
 
    @@index([telegramId])
    @@map("users")
+}
+
+/// Профиль участия пользователя в конкретном виде спорта (онбординг и настройки).
+model UserSportProfile {
+  userId                  String
+  sport                   SportKind
+  volleyballSkillTag      String?
+  /// Классика / пляжный — строка вида "classic,beach" или пусто
+  volleyballFormats     String?
+  wantsOrganizeVolleyball Boolean   @default(false)
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, sport])
+  @@index([userId])
+  @@map("user_sport_profiles")
 }
 
 model Organizer {
@@ -81,7 +102,7 @@ model Organizer {
 model Game {
   id          String     @id @default(uuid())
   organizerId String
-  venueId     String     // Пока просто string, позже можно сделать модель Venue
+  venueId     String // Пока просто string, позже можно сделать модель Venue
   startsAt    DateTime
   capacity    Int
   levelTag    String?
@@ -107,7 +128,7 @@ model Registration {
    status        RegStatus
    paymentStatus PaymentStatus @default(unpaid)
    paymentMarkedAt DateTime?
-   createdAt     DateTime      @default(now())
+   createdAt     DateTime @default(now())
 
    // Relations
    game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
@@ -145,7 +166,7 @@ model PlayerOrganizer {
   requestedAt   DateTime @default(now())
   confirmedAt   DateTime?
 
-  player        User     @relation("PlayerToOrganizers", fields: [playerId], references: [id], onDelete: Cascade)
+  player        User @relation("PlayerToOrganizers", fields: [playerId], references: [id], onDelete: Cascade)
   organizer     Organizer @relation("OrganizerToPlayers", fields: [organizerId], references: [id], onDelete: Cascade)
 
   @@unique([playerId, organizerId])
@@ -162,8 +183,8 @@ model GamePlayerResponse {
   respondedAt   DateTime?
   createdAt     DateTime @default(now())
 
-  game          Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  player        User     @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  game          Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  player        User @relation(fields: [playerId], references: [id], onDelete: Cascade)
 
   @@unique([gameId, playerId])
   @@index([gameId, response])
@@ -171,7 +192,8 @@ model GamePlayerResponse {
 }
 
 model MatchingProfile {
-  userId              String   @id
+  userId              String
+  sport               SportKind
   preferredGenders    String   @default("")
   preferredAges       String   @default("")
   playLevel           String   @default("")
@@ -186,12 +208,14 @@ model MatchingProfile {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@id([userId, sport])
   @@map("matching_profiles")
 }
 
-/// Расписание по дням недели (как в RacketMate Schedule): строки со слотами через запятую.
+/// Расписание по дням недели: строки со слотами через запятую; отдельная строка на (user, sport).
 model MatchingSchedule {
-  userId    String  @id
+  userId    String
+  sport     SportKind
   monday    String?
   tuesday   String?
   wednesday String?
@@ -202,6 +226,7 @@ model MatchingSchedule {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@id([userId, sport])
   @@map("matching_schedules")
 }
 

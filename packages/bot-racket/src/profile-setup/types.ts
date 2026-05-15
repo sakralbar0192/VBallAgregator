@@ -69,8 +69,6 @@ export interface ProfileSetupWizardContext extends WizardContext {
 
 export type ProfileSetupActions =
   | PlayLevelAction
-  | PlayerAgeAction
-  | PlayerGenderAction
   | WeekDayAction
   | DayTimeAction
   | PreferredAgeAction
@@ -78,8 +76,6 @@ export type ProfileSetupActions =
 
 export type StepKey =
   | PlayLevelStepName
-  | PlayerAgeStepName
-  | PlayerGenderStepName
   | WeekDayStepName
   | DayTimeStepName
   | PreferredAgeStepName

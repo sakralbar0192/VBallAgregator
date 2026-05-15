@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { prisma } from '../infrastructure/prisma.js';
-import { registerUser, registerOrganizer, createGame, joinGame, markPayment } from '../application/use-cases.js';
+import { registerUser, registerOrganizer, createGame, joinGame, markPayment, setUserDemographics, upsertUserSportProfileRow, setUserVolleyballOnboardingSummary } from '../application/use-cases.js';
 import { GameStatus } from '../domain/game.js';
 import { RegStatus } from '../domain/registration.js';
 import { clearDatabase } from './test-db-helpers.js';
@@ -160,5 +160,73 @@ describe('Integration Tests - Full User Journey', () => {
     // Step 2: Try to mark payment before game starts
     const { markPayment } = await import('../application/use-cases.js');
     await expect(markPayment(game.id, playerResult.userId)).rejects.toThrow('Окно оплаты еще не открыто');
+  });
+});
+
+describe('Integration: user demographics and sport profiles', () => {
+  beforeEach(async () => {
+    await clearDatabase();
+  }, 10000);
+
+  afterEach(async () => {
+    await clearDatabase();
+  }, 10000);
+
+  it('persists demographics, volleyball sport profile and level summary', async () => {
+    const { userId } = await registerUser(600000001n, 'Multi');
+    await setUserDemographics(userId, { gender: 'men' });
+    await setUserDemographics(userId, { ageBand: 'after-thirty' });
+    await upsertUserSportProfileRow(userId, 'volleyball', {
+      volleyballSkillTag: 'intermediate',
+      volleyballFormats: 'classic',
+      wantsOrganizeVolleyball: true,
+    });
+    await setUserVolleyballOnboardingSummary(userId, 'intermediate');
+
+    const u = await prisma.user.findUnique({ where: { id: userId } });
+    expect(u?.gender).toBe('men');
+    expect(u?.ageBand).toBe('after-thirty');
+    expect(u?.levelTag).toBe('intermediate');
+    expect(u?.activeSport).toBe('volleyball');
+
+    const sp = await prisma.userSportProfile.findUnique({
+      where: { userId_sport: { userId, sport: 'volleyball' } },
+    });
+    expect(sp?.volleyballSkillTag).toBe('intermediate');
+    expect(sp?.wantsOrganizeVolleyball).toBe(true);
+  });
+
+  it('creates tennis user sport profile marker', async () => {
+    const { userId } = await registerUser(600000002n, 'Ten');
+    await setUserDemographics(userId, { gender: 'women', ageBand: 'before-twenty' });
+    await upsertUserSportProfileRow(userId, 'tennis');
+    const sp = await prisma.userSportProfile.findUnique({
+      where: { userId_sport: { userId, sport: 'tennis' } },
+    });
+    expect(sp?.sport).toBe('tennis');
+  });
+
+  it('persists volleyball and tennis sport rows with organizer only when requested', async () => {
+    const { userId } = await registerUser(600000003n, 'Both');
+    await setUserDemographics(userId, { gender: 'men', ageBand: 'after-thirty' });
+    await upsertUserSportProfileRow(userId, 'volleyball', {
+      volleyballSkillTag: 'novice',
+      volleyballFormats: 'classic',
+      wantsOrganizeVolleyball: true,
+    });
+    await upsertUserSportProfileRow(userId, 'tennis');
+    await setUserVolleyballOnboardingSummary(userId, 'novice');
+
+    const org = await prisma.organizer.findUnique({ where: { userId } });
+    expect(org).toBeNull();
+
+    const vb = await prisma.userSportProfile.findUnique({
+      where: { userId_sport: { userId, sport: 'volleyball' } },
+    });
+    const tn = await prisma.userSportProfile.findUnique({
+      where: { userId_sport: { userId, sport: 'tennis' } },
+    });
+    expect(vb?.wantsOrganizeVolleyball).toBe(true);
+    expect(tn?.sport).toBe('tennis');
   });
 });

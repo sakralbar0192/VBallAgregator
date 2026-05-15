@@ -2,6 +2,8 @@ import { Markup } from 'telegraf';
 import type { PreferredGender, PreferredGenderAction, PreferredGenderStepName } from '../types.js';
 import type { EntityInfo } from '../step-wizard-types.js';
 import turnDataIntoAction from '../utils/turn-data-into-action.js';
+import { TENNIS_PROFILE_WIZARD_BACK_CB, TennisStepAction } from '../tennis-callbacks.js';
+import { TennisText } from '../tennis-text.js';
 
 export default class PreferredGenderService {
   static PreferredGenderStepName: PreferredGenderStepName = 'preferred-gender';
@@ -34,11 +36,12 @@ export default class PreferredGenderService {
       Markup.button.callback(
         !selectedGenders?.length ||
           PreferredGenderService.preferredGenderKeys.every(key => selectedGenders?.includes(key))
-          ? '✅ Любой'
-          : 'Готово',
-        'preferred-gender_done',
+          ? TennisText.anyGender
+          : TennisText.genderDone,
+        TennisStepAction.preferredGenderDone,
       ),
     ]);
+    gendersKeyboard.push([Markup.button.callback(TennisText.back, TENNIS_PROFILE_WIZARD_BACK_CB)]);
     return gendersKeyboard;
   }
 

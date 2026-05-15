@@ -112,6 +112,41 @@ export function buildPrivateMessageUpdate(opts: {
   };
 }
 
+export function findLastMessageWithText(
+  calls: ApiCallRecord[],
+  substring: string,
+): ApiCallRecord | undefined {
+  for (let i = calls.length - 1; i >= 0; i--) {
+    const c = calls[i]!;
+    if (c.method !== 'sendMessage' && c.method !== 'editMessageText') continue;
+    const text = String(c.payload.text ?? '');
+    if (text.includes(substring)) return c;
+  }
+  return undefined;
+}
+
+export function getLastMessageIdForChat(calls: ApiCallRecord[], chatId: number): number {
+  let mid = 1;
+  for (const c of calls) {
+    if (c.method === 'sendMessage' && Number(c.payload.chat_id) === chatId) {
+      mid = (c.response as { message_id: number }).message_id;
+    }
+    if (c.method === 'editMessageText' && Number(c.payload.chat_id) === chatId) {
+      mid = (c.response as { message_id: number }).message_id;
+    }
+  }
+  return mid;
+}
+
+export async function drainCallbacks(
+  bot: { handleUpdate: (update: Update) => Promise<void> },
+  updates: Update[],
+): Promise<void> {
+  for (const u of updates) {
+    await bot.handleUpdate(u);
+  }
+}
+
 export function buildCallbackUpdate(opts: {
   updateId: number;
   chatId: number;

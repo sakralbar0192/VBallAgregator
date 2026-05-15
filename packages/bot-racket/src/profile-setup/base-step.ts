@@ -11,14 +11,25 @@ export abstract class BaseStep {
 
   isFirstStep = false;
 
+  /** Первый шаг — `reply`, если нет якорного callback-сообщения (например вход из /start). Иначе одно сообщение редактируется. */
+  getReplyMethod(ctx: ProfileSetupWizardContext): ReplyMethod {
+    const fromCb =
+      ctx.callbackQuery?.message &&
+      !ctx.callbackQuery.inline_message_id &&
+      'message_id' in ctx.callbackQuery.message;
+    if (fromCb || !this.isFirstStep) return 'editMessageText';
+    return 'reply';
+  }
+
   get replyMethod(): ReplyMethod {
     return this.isFirstStep ? 'reply' : 'editMessageText';
   }
 
   /** Отправка текста шага; игнорирует «message is not modified» при повторном edit с тем же содержимым. */
   protected async replyOrEdit(ctx: ProfileSetupWizardContext, text: string, extra?: object): Promise<void> {
+    const method = this.getReplyMethod(ctx);
     try {
-      await ctx[this.replyMethod](text, extra as never);
+      await ctx[method](text, extra as never);
     } catch (err: unknown) {
       if (BaseStep.isTelegramMessageNotModified(err)) return;
       throw err;

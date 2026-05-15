@@ -7,8 +7,6 @@ import type { DayTime, WeekDay, WizardState } from '../../../bot-racket/src/prof
 function buildWizardState(): WizardState {
   return {
     level: 'amateur',
-    age: 'after-thirty',
-    gender: 'men',
     selectedDays: ['monday', 'wednesday'],
     dayTimes: {
       monday: ['ten-am', 'eleven-am'],
@@ -19,7 +17,7 @@ function buildWizardState(): WizardState {
   };
 }
 
-describe('Racket profile wizard finalize (Prisma)', () => {
+describe('Tennis profile wizard finalize (Prisma)', () => {
   beforeEach(async () => {
     await clearDatabase();
   });
@@ -31,12 +29,20 @@ describe('Racket profile wizard finalize (Prisma)', () => {
   it('persists MatchingProfile and MatchingSchedule from wizard.state', async () => {
     const telegramId = 424242424;
     const user = await prisma.user.create({
-      data: { telegramId: BigInt(telegramId), name: 'Racket Tester', activeSport: 'racket' },
+      data: {
+        telegramId: BigInt(telegramId),
+        name: 'Tennis Tester',
+        activeSport: 'tennis',
+        gender: 'men',
+        ageBand: 'after-thirty',
+      },
     });
 
     await persistRacketProfileFromWizardState(telegramId, buildWizardState());
 
-    const profile = await prisma.matchingProfile.findUnique({ where: { userId: user.id } });
+    const profile = await prisma.matchingProfile.findUnique({
+      where: { userId_sport: { userId: user.id, sport: 'tennis' } },
+    });
     expect(profile).not.toBeNull();
     expect(profile?.playLevelCode).toBe('amateur');
     expect(profile?.playLevel).toBe('любитель');
@@ -46,9 +52,16 @@ describe('Racket profile wizard finalize (Prisma)', () => {
     expect(profile?.preferredGenders).toBe('women');
     expect(profile?.weekdayPreference).toContain('понедельник');
 
-    const schedule = await prisma.matchingSchedule.findUnique({ where: { userId: user.id } });
+    const schedule = await prisma.matchingSchedule.findUnique({
+      where: { userId_sport: { userId: user.id, sport: 'tennis' } },
+    });
     expect(schedule?.monday).toBe('ten-am, eleven-am');
     expect(schedule?.wednesday).toBe('twenty-pm');
     expect(schedule?.tuesday).toBeNull();
+
+    const sp = await prisma.userSportProfile.findUnique({
+      where: { userId_sport: { userId: user.id, sport: 'tennis' } },
+    });
+    expect(sp).not.toBeNull();
   });
 });

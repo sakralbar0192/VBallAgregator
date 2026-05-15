@@ -3,6 +3,8 @@
  */
 export type RacketMatchingProfileRow = {
   userId: string;
+  /** Вид спорта для составного ключа (теннис — основной сценарий matching). */
+  sport: 'tennis' | 'volleyball';
   preferredGenders: string;
   preferredAges: string;
   playLevel: string;
@@ -15,6 +17,7 @@ export type RacketMatchingProfileRow = {
 
 export type RacketMatchingScheduleRow = {
   userId: string;
+  sport: 'tennis' | 'volleyball';
   monday: string | null;
   tuesday: string | null;
   wednesday: string | null;

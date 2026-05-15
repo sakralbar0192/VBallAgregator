@@ -2,6 +2,8 @@ import { Markup } from 'telegraf';
 import { BaseStep } from '../base-step.js';
 import PreferredGenderService from '../services/prefer-gender.js';
 import type { ProfileSetupWizardContext as Context, PreferredGender, PreferredGenderAction } from '../types.js';
+import { TennisStepAction } from '../tennis-callbacks.js';
+import { TennisText } from '../tennis-text.js';
 
 export class PreferredGenderStep extends BaseStep {
   async execute(ctx: Context) {
@@ -11,7 +13,7 @@ export class PreferredGenderStep extends BaseStep {
 
     await this.replyOrEdit(
       ctx,
-      '🧑🤝👧 Выберите предпочтительный пол оппонентов',
+      TennisText.preferredGender,
       Markup.inlineKeyboard(
         PreferredGenderService.getGendersKeyboard(ctx.wizard.state.preferGenders as PreferredGender[]),
       ),
@@ -19,7 +21,7 @@ export class PreferredGenderStep extends BaseStep {
   }
 
   async handleInput(ctx: Context, action: PreferredGenderAction) {
-    if (action === 'preferred-gender_done') {
+    if (action === TennisStepAction.preferredGenderDone) {
       if (
         !ctx.wizard.state.preferGenders?.length ||
         PreferredGenderService.preferredGenderKeys.every(g =>

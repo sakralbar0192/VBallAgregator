@@ -2,6 +2,8 @@ import { Markup } from 'telegraf';
 import type { PreferredAge, PreferredAgeAction, PreferredAgeStepName } from '../types.js';
 import type { EntityInfo } from '../step-wizard-types.js';
 import turnDataIntoAction from '../utils/turn-data-into-action.js';
+import { TENNIS_PROFILE_WIZARD_BACK_CB, TennisStepAction } from '../tennis-callbacks.js';
+import { TennisText } from '../tennis-text.js';
 
 export default class PreferredAgeService {
   static PreferredAgeStepName: PreferredAgeStepName = 'preferred-age';
@@ -34,11 +36,12 @@ export default class PreferredAgeService {
       Markup.button.callback(
         !selectedAges?.length ||
           PreferredAgeService.preferredAgeKeys.every(key => selectedAges?.includes(key))
-          ? '✅ Любой'
-          : 'Готово',
-        'preferred-age_done',
+          ? TennisText.anyAge
+          : TennisText.ageDone,
+        TennisStepAction.preferredAgeDone,
       ),
     ]);
+    agesKeyboard.push([Markup.button.callback(TennisText.back, TENNIS_PROFILE_WIZARD_BACK_CB)]);
     return agesKeyboard;
   }
 

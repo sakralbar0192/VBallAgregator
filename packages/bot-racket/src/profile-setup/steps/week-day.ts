@@ -1,7 +1,11 @@
 import { Markup } from 'telegraf';
 import { BaseStep } from '../base-step.js';
+import { beginDayTimeWalk, pruneDayTimesForSelection } from '../day-time-walk.js';
 import WeekDayService from '../services/week-day.js';
+import { sortWeekDaysCalendar } from '../week-day-calendar.js';
 import type { ProfileSetupWizardContext as Context, WeekDay, WeekDayAction } from '../types.js';
+import { TennisText } from '../tennis-text.js';
+import { TennisStepAction } from '../tennis-callbacks.js';
 
 export class WeekDayStep extends BaseStep {
   async execute(ctx: Context) {
@@ -11,7 +15,7 @@ export class WeekDayStep extends BaseStep {
 
     await this.replyOrEdit(
       ctx,
-      '📅 Выберите дни для игры (можно несколько):',
+      TennisText.weekDays,
       Markup.inlineKeyboard(WeekDayService.getDaysKeyboard(ctx.wizard.state.selectedDays)),
     );
   }
@@ -19,22 +23,33 @@ export class WeekDayStep extends BaseStep {
   async handleInput(ctx: Context, action: WeekDayAction) {
     let selectedDays = ctx.wizard.state.selectedDays as WeekDay[];
 
-    if (action === 'week-day_done') {
+    if (action === TennisStepAction.weekDayDone) {
       if (!selectedDays?.length) {
-        await ctx.answerCbQuery('Выберите хотя бы один день!');
-      } else {
-        await ctx.answerCbQuery();
-        return true;
+        await ctx.answerCbQuery(TennisText.errPickWeekDay);
+        return;
+      }
+      const sorted = sortWeekDaysCalendar(selectedDays);
+      ctx.wizard.state.selectedDays = sorted;
+      pruneDayTimesForSelection(ctx, sorted);
+      beginDayTimeWalk(ctx, sorted);
+      await ctx.answerCbQuery();
+      return true;
+    }
+
+    const weekDay = this.stripActionPayload(action, WeekDayService.WeekDayStepName) as WeekDay;
+    if (selectedDays.includes(weekDay)) {
+      selectedDays = selectedDays.filter(day => day !== weekDay);
+      const dt = ctx.wizard.state.dayTimes as Partial<Record<WeekDay, unknown>> | undefined;
+      if (dt && weekDay in dt) {
+        delete dt[weekDay];
+      }
+      if (ctx.wizard.state.dayTimeCursorDay === weekDay) {
+        ctx.wizard.state.dayTimeCursorDay = undefined;
       }
     } else {
-      const weekDay = this.stripActionPayload(action, WeekDayService.WeekDayStepName) as WeekDay;
-      if (selectedDays.includes(weekDay)) {
-        selectedDays = selectedDays.filter(day => day !== weekDay);
-      } else {
-        selectedDays.push(weekDay);
-      }
-      ctx.wizard.state.selectedDays = selectedDays;
-      await ctx.answerCbQuery();
+      selectedDays.push(weekDay);
     }
+    ctx.wizard.state.selectedDays = selectedDays;
+    await ctx.answerCbQuery();
   }
 }

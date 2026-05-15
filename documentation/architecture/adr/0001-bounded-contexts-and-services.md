@@ -6,7 +6,7 @@
 
 ## Контекст
 
-VBallAgregator — модульный монолит после слияния волейбольного и ракеточного контуров. Целевая архитектура: **database-per-service**, **RabbitMQ** для асинхронных событий, **HTTP + OpenAPI** для синхронных вызовов.
+VBallAgregator — модульный монолит после слияния волейбольного и теннисного контуров. Целевая архитектура: **database-per-service**, **RabbitMQ** для асинхронных событий, **HTTP + OpenAPI** для синхронных вызовов.
 
 ## Решение
 
@@ -14,10 +14,10 @@ VBallAgregator — модульный монолит после слияния �
 
 | Сервис | Владение данными | Публичный контракт |
 |--------|------------------|-------------------|
-| **user-service** | `User`, `UserNotificationPreferences` | OpenAPI: CRUD пользователя по `id` / lookup по `telegramId`; настройки уведомлений |
+| **user-service** | `User`, `UserNotificationPreferences`, **`UserSportProfile`** | OpenAPI: CRUD пользователя по `id` / lookup по `telegramId`; настройки уведомлений; профили по виду спорта |
 | **organizer-service** (или объединение с user на раннем этапе) | `Organizer`, `PlayerOrganizer` | OpenAPI: связи игрок–организатор, списки подтверждённых игроков |
 | **game-service** | `Game`, `Registration`, `GamePlayerResponse` | OpenAPI: жизненный цикл игры, join/leave, оплата на регистрации, инвайты |
-| **matching-service** | `MatchingProfile`, `MatchingSchedule` | OpenAPI: профиль и расписание ракеточного подбора |
+| **matching-service** | `MatchingProfile`, `MatchingSchedule` | OpenAPI: профиль и расписание подбора по виду спорта (`volleyball`, `tennis`) |
 | **scheduler-service** | не владеет доменными таблицами; Redis/BullMQ | Постановка джобов по командам из game-service (HTTP или события) |
 | **notification-service** | минимальные локальные таблицы при необходимости (идемпотентность); не дублировать домен | Подписка на RabbitMQ; отправка Telegram |
 | **telegram-gateway** | сессии Telegraf (Redis), без доменной БД | Внешний вход; вызовы внутренних OpenAPI |

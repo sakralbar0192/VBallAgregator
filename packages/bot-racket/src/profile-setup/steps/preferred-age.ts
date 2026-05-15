@@ -2,6 +2,8 @@ import { Markup } from 'telegraf';
 import { BaseStep } from '../base-step.js';
 import PreferredAgeService from '../services/prefer-age.js';
 import type { ProfileSetupWizardContext as Context, PreferredAge, PreferredAgeAction } from '../types.js';
+import { TennisStepAction } from '../tennis-callbacks.js';
+import { TennisText } from '../tennis-text.js';
 
 export class PreferredAgeStep extends BaseStep {
   async execute(ctx: Context) {
@@ -11,13 +13,13 @@ export class PreferredAgeStep extends BaseStep {
 
     await this.replyOrEdit(
       ctx,
-      '🧓 Выберите предпочтительный возраст оппонентов',
+      TennisText.preferredAge,
       Markup.inlineKeyboard(PreferredAgeService.getAgesKeyboard(ctx.wizard.state.preferAges as PreferredAge[])),
     );
   }
 
   async handleInput(ctx: Context, action: PreferredAgeAction) {
-    if (action === 'preferred-age_done') {
+    if (action === TennisStepAction.preferredAgeDone) {
       if (
         !ctx.wizard.state.preferAges?.length ||
         PreferredAgeService.preferredAgeKeys.every(age => ctx.wizard.state.preferAges?.includes(age))

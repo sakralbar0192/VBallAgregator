@@ -6,6 +6,8 @@ export type StepDefinition<N extends string, A extends string, C extends WizardC
     execute(ctx: C): Promise<void>;
     handleInput(ctx: C, action: A): Promise<boolean | void>;
   };
+  /** Перед «Назад» с этого шага на предыдущий (например с выбора времени к дням недели). */
+  beforeRewindToPrevious?: (ctx: C) => void;
 };
 
 export type StepFactoryConfig<N extends string, A extends string, C extends WizardContext> = {

@@ -6,6 +6,9 @@ export type User = {
   telegramId: bigint;
   name: string;
   levelTag: string | null;
+  gender: string | null;
+  ageBand: string | null;
+  activeSport: 'volleyball' | 'tennis';
   createdAt: Date;
 };
 

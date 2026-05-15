@@ -455,6 +455,18 @@ process.on('unhandledRejection', (reason) => {
 jest.setTimeout(30000)
 ```
 
+## Онбординг (мультиспорт)
+
+| Уровень | Доля | Файлы |
+|--------|------|--------|
+| Unit | ~60% | `packages/bot-volley/src/bot/registration/*.test.ts`, `packages/bot-racket/src/profile-setup/*.test.ts` |
+| Integration | ~25% | `volleyball-onboarding-persist.integration.test.ts`, `tennis-wizard-prefill.integration.test.ts`, `onboarding-flow-controller.integration.test.ts`, `racket-profile-wizard-finalize.integration.test.ts` |
+| E2E | ~15% | `packages/core/src/tests/e2e/onboarding-flows.test.ts` (harness: `telegram-harness.ts`) |
+
+Команды: `npm run test:onboarding`, `test:onboarding:integration`, `test:onboarding:e2e`. Сопоставление с ручной регрессией — колонка «Автотест» в [regression-testing-checklist.md](../testing/regression-testing-checklist.md).
+
+Отдельный Jest-проект `onboarding-coverage` (пороги по `bot-volley/.../registration/`) — `jest --selectProjects onboarding-coverage`.
+
 ## Структура тестов
 
 ### Организация тестовых файлов

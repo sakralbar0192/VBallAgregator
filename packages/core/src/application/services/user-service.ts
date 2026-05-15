@@ -14,7 +14,28 @@ export interface UpdateUserLevelCommand {
 
 export interface UpdateUserActiveSportCommand {
   userId: string;
-  sport: 'volleyball' | 'racket';
+  sport: 'volleyball' | 'tennis';
+}
+
+export interface UpdateUserDemographicsCommand {
+  userId: string;
+  gender?: string;
+  ageBand?: string;
+}
+
+export interface UpsertUserSportProfileRowCommand {
+  userId: string;
+  sport: 'volleyball' | 'tennis';
+  volleyball?: {
+    volleyballSkillTag: string | null;
+    volleyballFormats: string | null;
+    wantsOrganizeVolleyball: boolean;
+  };
+}
+
+export interface UpdateUserVolleyballOnboardingSummaryCommand {
+  userId: string;
+  levelTag: string | undefined;
 }
 
 /**
@@ -95,6 +116,36 @@ export class UserApplicationService {
     serviceLogger.info('updateUserActiveSport', 'Обновление вида спорта', { userId: command.userId, sport: command.sport }, {});
     await this.userRepo.transaction(async () => {
       await this.userRepo.updateUserActiveSport(command.userId, command.sport);
+    });
+    return { ok: true };
+  }
+
+  async updateUserDemographics(command: UpdateUserDemographicsCommand): Promise<{ ok: boolean }> {
+    const serviceLogger = LoggerFactory.service('user-service');
+    serviceLogger.info('updateUserDemographics', 'Демография', { userId: command.userId }, {});
+    await this.userRepo.transaction(async () => {
+      await this.userRepo.updateUserDemographics(command.userId, {
+        gender: command.gender,
+        ageBand: command.ageBand,
+      });
+    });
+    return { ok: true };
+  }
+
+  async upsertUserSportProfileRow(command: UpsertUserSportProfileRowCommand): Promise<{ ok: boolean }> {
+    const serviceLogger = LoggerFactory.service('user-service');
+    serviceLogger.info('upsertUserSportProfileRow', 'Профиль по виду спорта', { userId: command.userId, sport: command.sport }, {});
+    await this.userRepo.transaction(async () => {
+      await this.userRepo.upsertUserSportProfileRow(command.userId, command.sport, command.volleyball);
+    });
+    return { ok: true };
+  }
+
+  async updateUserVolleyballOnboardingSummary(command: UpdateUserVolleyballOnboardingSummaryCommand): Promise<{ ok: boolean }> {
+    const serviceLogger = LoggerFactory.service('user-service');
+    serviceLogger.info('updateUserVolleyballOnboardingSummary', 'Волейбол: levelTag + activeSport', { userId: command.userId }, {});
+    await this.userRepo.transaction(async () => {
+      await this.userRepo.updateUserVolleyballOnboardingSummary(command.userId, command.levelTag);
     });
     return { ok: true };
   }

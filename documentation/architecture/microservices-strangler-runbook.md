@@ -6,7 +6,7 @@
 
 1. **notification-worker** + outbox → RabbitMQ (уже есть заготовки `apps/notification-worker`, `apps/outbox-publisher`, таблица `messaging_outbox`).
 2. **scheduler-service** (BullMQ workers отдельно от gateway).
-3. **matching-service** (ракеточный профиль).
+3. **matching-service** (профиль и расписание подбора по виду спорта).
 4. **user-service**.
 5. **game-service** (ядро волейбола).
 

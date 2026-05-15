@@ -1,6 +1,7 @@
 import { BasePrismaRepository } from './base-repository.js';
 import { prisma } from '../prisma.js';
 import { LOG_MESSAGES } from '../../shared/logging-messages.js';
+import type { SportKind } from '@prisma/client';
 
 /**
  * Интерфейс репозитория для работы с пользователями
@@ -21,7 +22,27 @@ export interface UserRepo {
    */
   updateUserLevel(userId: string, levelTag?: string): Promise<void>;
 
-  updateUserActiveSport(userId: string, sport: 'volleyball' | 'racket'): Promise<void>;
+  updateUserActiveSport(userId: string, sport: 'volleyball' | 'tennis'): Promise<void>;
+
+  /**
+   * Частичное обновление демографии пользователя (пол и/или возрастной диапазон).
+   */
+  updateUserDemographics(userId: string, data: { gender?: string; ageBand?: string }): Promise<void>;
+
+  /**
+   * Строка профиля по виду спорта: для волейбола — поля формата/уровня/флага организатора; для тенниса — пустая строка-«маркер» завершённости онбординга.
+   */
+  upsertUserSportProfileRow(
+    userId: string,
+    sport: SportKind,
+    volleyball?: {
+      volleyballSkillTag: string | null;
+      volleyballFormats: string | null;
+      wantsOrganizeVolleyball: boolean;
+    },
+  ): Promise<void>;
+
+  updateUserVolleyballOnboardingSummary(userId: string, levelTag: string | undefined): Promise<void>;
 
   /**
    * Выполняет функцию в транзакции
@@ -79,12 +100,75 @@ export class PrismaUserRepo extends BasePrismaRepository implements UserRepo {
     });
   }
 
-  async updateUserActiveSport(userId: string, sport: 'volleyball' | 'racket'): Promise<void> {
+  async updateUserActiveSport(userId: string, sport: 'volleyball' | 'tennis'): Promise<void> {
     this.validateRequired(userId, 'userId');
     await this.executeWithLogging('updateUserActiveSport', 'users', 'UPDATE', { userId, sport }, async () => {
       await prisma.user.update({
         where: { id: userId },
         data: { activeSport: sport },
+      });
+    });
+  }
+
+  async updateUserDemographics(userId: string, data: { gender?: string; ageBand?: string }): Promise<void> {
+    this.validateRequired(userId, 'userId');
+    const patch: { gender?: string; ageBand?: string } = {};
+    if (data.gender !== undefined) patch.gender = data.gender;
+    if (data.ageBand !== undefined) patch.ageBand = data.ageBand;
+    if (Object.keys(patch).length === 0) return;
+
+    await this.executeWithLogging('updateUserDemographics', 'users', 'UPDATE', { userId, ...patch }, async () => {
+      await prisma.user.update({
+        where: { id: userId },
+        data: patch,
+      });
+    });
+  }
+
+  async upsertUserSportProfileRow(
+    userId: string,
+    sport: SportKind,
+    volleyball?: {
+      volleyballSkillTag: string | null;
+      volleyballFormats: string | null;
+      wantsOrganizeVolleyball: boolean;
+    },
+  ): Promise<void> {
+    this.validateRequired(userId, 'userId');
+    await this.executeWithLogging('upsertUserSportProfileRow', 'user_sport_profiles', 'UPSERT', { userId, sport }, async () => {
+      if (sport === 'volleyball' && volleyball) {
+        await prisma.userSportProfile.upsert({
+          where: { userId_sport: { userId, sport } },
+          create: {
+            userId,
+            sport,
+            volleyballSkillTag: volleyball.volleyballSkillTag,
+            volleyballFormats: volleyball.volleyballFormats,
+            wantsOrganizeVolleyball: volleyball.wantsOrganizeVolleyball,
+          },
+          update: {
+            volleyballSkillTag: volleyball.volleyballSkillTag,
+            volleyballFormats: volleyball.volleyballFormats,
+            wantsOrganizeVolleyball: volleyball.wantsOrganizeVolleyball,
+          },
+        });
+        return;
+      }
+
+      await prisma.userSportProfile.upsert({
+        where: { userId_sport: { userId, sport } },
+        create: { userId, sport },
+        update: {},
+      });
+    });
+  }
+
+  async updateUserVolleyballOnboardingSummary(userId: string, levelTag: string | undefined): Promise<void> {
+    this.validateRequired(userId, 'userId');
+    await this.executeWithLogging('updateUserVolleyballOnboardingSummary', 'users', 'UPDATE', { userId, levelTag }, async () => {
+      await prisma.user.update({
+        where: { id: userId },
+        data: { levelTag: levelTag ?? undefined, activeSport: 'volleyball' },
       });
     });
   }

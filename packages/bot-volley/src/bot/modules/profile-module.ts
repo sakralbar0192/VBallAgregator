@@ -15,9 +15,6 @@ export class ProfileModule implements IBotModule {
     bot.command('myplayers', PlayerManagementHandler.handleMyPlayers);
     bot.command('pendingplayers', PlayerManagementHandler.handlePendingPlayers);
 
-    bot.hears(['Настроить профиль', 'Редактировать профиль'], ProfileHandler.handleRacketProfileKeyboard);
-    bot.hears('Искать игры', ProfileHandler.handleRacketSearchGamesPlaceholder);
-
     // Обработчики callback'ов для управления игроками
     bot.action(/^confirm_player_(.+)$/, async (ctx) => {
       await PlayerManagementHandler.handleConfirmPlayer(ctx, ctx.match[0]);

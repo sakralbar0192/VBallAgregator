@@ -10,6 +10,7 @@ export async function clearDatabase(): Promise<void> {
   await prisma.userNotificationPreferences.deleteMany();
   await prisma.matchingSchedule.deleteMany();
   await prisma.matchingProfile.deleteMany();
+  await prisma.userSportProfile.deleteMany();
   await prisma.user.deleteMany();
 }
 

@@ -2,6 +2,8 @@ import { Markup } from 'telegraf';
 import WeekDayService from './week-day.js';
 import type { DayTime, DayTimeAction, DayTimeStepName, WeekDay } from '../types.js';
 import turnDataIntoAction from '../utils/turn-data-into-action.js';
+import { TENNIS_PROFILE_WIZARD_BACK_CB, TennisStepAction } from '../tennis-callbacks.js';
+import { TennisText } from '../tennis-text.js';
 
 export default class DayTimeService {
   static DayTimeStepName: DayTimeStepName = 'day-time';
@@ -37,7 +39,8 @@ export default class DayTimeService {
     const daysKeyboard = keyboardStructure.map(row =>
       row.map(dayTime => Markup.button.callback(...createTimeButton(dayTime))),
     );
-    daysKeyboard.push([Markup.button.callback('Готово', 'day-time_done')]);
+    daysKeyboard.push([Markup.button.callback(TennisText.done, TennisStepAction.dayTimeDone)]);
+    daysKeyboard.push([Markup.button.callback(TennisText.back, TENNIS_PROFILE_WIZARD_BACK_CB)]);
     return daysKeyboard;
   }
 

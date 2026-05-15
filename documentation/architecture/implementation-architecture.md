@@ -13,7 +13,8 @@
 | [apps/server/index.ts](../../apps/server/index.ts) | Точка входа процесса: `validateConfig`, Redis, `createBot`, EventBus, Scheduler, health, Fastify API, `bot.launch`, graceful shutdown |
 | [packages/core/src](../../packages/core/src) | Домен (`domain/`), use cases (`application/`), Prisma (`infrastructure/prisma`, `prisma/schema` в [packages/core/prisma](../../packages/core/prisma)), API (`api/`), общие сервисы (`shared/`: логирование, event bus, scheduler, конфиг) |
 | [packages/bot-volley/src](../../packages/bot-volley/src) | Telegraf-бот: `create-bot.ts`, модули (`bot/modules/*`), хендлеры, клавиатуры |
-| [packages/bot-racket/src](../../packages/bot-racket/src) | Ракеточные сцены и мастер профиля (`profile-setup/*`, `racket-scenes.ts`) |
+| [packages/bot-volley/src/bot/registration/](../../packages/bot-volley/src/bot/registration/) | Мультиспорт-онбординг: `onboarding-flow-controller`, `sports-picker-controller`, `volleyball-wizard-controller`, константы (`onboarding-callbacks`, `onboarding-text`) |
+| [packages/bot-racket/src](../../packages/bot-racket/src) | Сцены и мастер профиля тенниса (`profile-setup/*`, `racket-scenes.ts`) |
 
 Сборка: корневой [tsconfig.json](../../tsconfig.json) включает `apps/server`, `packages/core`, `packages/bot-volley`, `packages/bot-racket`.
 
@@ -81,7 +82,8 @@ flowchart LR
 ## Telegram: модули и сцены
 
 - **Модули** (`RegistrationModule`, `GameManagementModule`, …) регистрируют `bot.command`, `bot.action`, `bot.hears` после middleware сцены.
-- **Ракеточная сцена:** `WizardScene` с id `racket-profile`. Код: [packages/bot-racket/src/profile-setup/profile-setup-scene.ts](../../packages/bot-racket/src/profile-setup/profile-setup-scene.ts). Шаги мастера — `StepFactory` и шаги в `profile-setup/steps/`; сохранение — [profile-setup-persist.ts](../../packages/bot-racket/src/profile-setup/profile-setup-persist.ts).
+- **Сцена тенниса:** `WizardScene` с id **`tennis-profile`** (`TENNIS_SCENE_ID` в [tennis-callbacks.ts](../../packages/bot-racket/src/profile-setup/tennis-callbacks.ts)). Код: [profile-setup-scene.ts](../../packages/bot-racket/src/profile-setup/profile-setup-scene.ts). Шаги — `profile-setup-step-factory.ts` и `profile-setup/steps/`; тексты/callback — `tennis-text.ts`, `tennis-callbacks.ts`; сохранение — [profile-setup-persist.ts](../../packages/bot-racket/src/profile-setup/profile-setup-persist.ts). После сохранения — мост `profile-complete-bridge` и продолжение очереди в [onboarding-flow-controller.ts](../../packages/bot-volley/src/bot/registration/onboarding-flow-controller.ts).
+- **Онбординг волейбола в боте:** фасад [onboarding-handlers.ts](../../packages/bot-volley/src/bot/registration/onboarding-handlers.ts) делегирует в `VolleyballWizardController` и `SportsPickerController`; состояние сессии — [onboarding-session.ts](../../packages/bot-volley/src/bot/registration/onboarding-session.ts), драфт волейбола — [volleyball-onboarding-state.ts](../../packages/bot-volley/src/bot/registration/volleyball-onboarding-state.ts).
 - **Важно (Telegraf):** middleware шага wizard получает `(ctx, next)`. Если апдейт не обработан (например обычное текстовое сообщение), нужно вызывать **`next()`**, иначе цепочка обрывается и команды ниже по стеку не выполняются. В сцене после обработки `callback_query` выполняется `return` без `next()` — это намеренно (апдейт поглощён).
 
 ---
@@ -106,4 +108,4 @@ flowchart LR
 - [modules.md](modules.md) — детализация модулей бота.
 - [session-management.md](session-management.md) — сессии и сцены.
 
-**Последнее обновление:** 2026-05-14
+**Последнее обновление:** 2026-05-15

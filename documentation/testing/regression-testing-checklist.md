@@ -2,8 +2,8 @@
 
 > **Назначение:** быстрый проход по зонам с отметками **Pass/Fail/Blocked**. Детальные шаги и тест-данные — в [`regression-test-cases.md`](regression-test-cases.md) (версия 2.0).
 
-**Версия:** 2.0  
-**Дата:** 2026-05-11
+**Версия:** 2.1  
+**Дата:** 2026-05-15
 
 ---
 
@@ -20,11 +20,15 @@
 
 ## P0 — дымовой минимум (обязательно перед релизом)
 
-| ID | Кейс | Результат |
-|----|------|-----------|
-| TC-REG-001 | Регистрация игрока (полный путь) | ☐ Pass ☐ Fail ☐ Blocked |
-| TC-REG-002 | Регистрация организатора | ☐ Pass ☐ Fail ☐ Blocked |
-| TC-RACKET-001 | Регистрация «ракетки»: полный wizard `racket-profile` → `matching_profiles` + `matching_schedules` в БД | ☐ Pass ☐ Fail ☐ Blocked |
+| ID | Кейс | Автотест | Результат |
+|----|------|----------|-----------|
+| TC-REG-001 | Новый пользователь: `/start` → мультивыбор видов → пол/возраст один раз → волейбол и/или теннис → финал (Organizer только при флаге в конце) | e2e `newUser_volleyballOnly`, `newUser_tennisOnly` | ☐ Pass ☐ Fail ☐ Blocked |
+| TC-REG-002 | Организатор: завершённый онбординг с флагом «организую волейбол» → запись `Organizer` | e2e `volleyball_organizer_noOthers`; integration demographics | ☐ Pass ☐ Fail ☐ Blocked |
+| TC-REG-003 | Пользователь со всеми видами из каталога: `/start` → выбор «изменить волейбол / теннис» (один вид за раз) | e2e `returning_editVolleyball` | ☐ Pass ☐ Fail ☐ Blocked |
+| TC-REG-004 | Частичный набор видов: `/start` → «редактировать» или «добавить вид» | e2e `partial_addTennis` | ☐ Pass ☐ Fail ☐ Blocked |
+| TC-TENNIS-001 | Теннис: полный wizard `tennis-profile` → `matching_profiles` + `matching_schedules` с `sport=tennis` + строка `user_sport_profiles` | e2e `newUser_tennisOnly`; integration `racket-profile-wizard-finalize` | ☐ Pass ☐ Fail ☐ Blocked |
+| TC-VB-ORG-001 | Волейбол: шаг организаторов при **пустом** списке других организаторов — сразу summary, без списка | e2e `volleyball_organizer_noOthers` | ☐ Pass ☐ Fail ☐ Blocked |
+| — | `/start` во время теннис-мастера не ломает сессию | e2e `start_clearsTennisScene` | ☐ Pass ☐ Fail ☐ Blocked |
 | TC-PLAYER-001 | `/games` | ☐ Pass ☐ Fail ☐ Blocked |
 | TC-PLAYER-003 | `/join` → confirmed | ☐ Pass ☐ Fail ☐ Blocked |
 | TC-PLAYER-007 | `/leave` + промоушен waitlist (если подготовлены данные) | ☐ Pass ☐ Fail ☐ Blocked |
@@ -39,14 +43,14 @@
 
 ## P1 — полная регрессия (бот)
 
-### Регистрация (TC-REG-003 … 006)
+### Регистрация (TC-REG-007 … 010)
 
 | ID | Кратко | Результат |
 |----|--------|-----------|
-| TC-REG-003 | Повторный `/start`, дубликатов нет | ☐ |
-| TC-REG-004 | Все уровни `level_*` | ☐ |
-| TC-REG-005 | Выбор организаторов + пустой выбор | ☐ |
-| TC-REG-006 | Прерывание без `/cancel` (фактическое поведение) | ☐ |
+| TC-REG-007 | Повторный `/start`, дубликатов нет | ☐ |
+| TC-REG-008 | Все уровни волейбольного мастера | ☐ |
+| TC-REG-009 | Выбор организаторов + пустой выбор | ☐ |
+| TC-REG-010 | Прерывание без `/cancel` (фактическое поведение) | ☐ |
 
 ### Игрок (TC-PLAYER-002,004–009,011–012,014)
 
@@ -142,7 +146,7 @@
 |---------|----------|
 | Дата | |
 | Окружение | |
-| P0: Pass / Total | / 11 |
+| P0: Pass / Total | / 15 |
 | P1: Pass / Total | / |
 | P2: Pass / Total | / |
 | Заблокировано (Blocked) | список ID: |

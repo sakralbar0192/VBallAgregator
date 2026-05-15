@@ -1,44 +1,45 @@
-import { Markup } from 'telegraf';
 import { LoggerFactory } from '../../../core/src/shared/layer-logger.js';
+import { sessionManager } from '../../../core/src/shared/session-manager.js';
 import { StepFactory } from './step-factory.js';
-import { buildRacketProfileSummaryMessage, persistRacketProfileFromWizardState } from './profile-setup-persist.js';
+import { buildTennisProfileSummaryMessage, persistRacketProfileFromWizardState } from './profile-setup-persist.js';
 import DayTimeService from './services/day-time.js';
 import PlayLevelService from './services/play-level.js';
-import PlayerAgeService from './services/player-age.js';
-import PlayerGenderService from './services/player-gender.js';
 import PreferredAgeService from './services/prefer-age.js';
 import PreferredGenderService from './services/prefer-gender.js';
 import WeekDayService from './services/week-day.js';
 import type {
+  DayTime,
   DayTimeAction,
   PlayLevelAction,
-  PlayerAgeAction,
-  PlayerGenderAction,
   PreferredAgeAction,
   PreferredGenderAction,
   ProfileSetupActions,
   ProfileSetupWizardContext,
   StepKey,
+  WeekDay,
   WeekDayAction,
 } from './types.js';
 import { DayTimeStep } from './steps/day-time.js';
 import { PlayLevelStep } from './steps/play-level.js';
-import { PlayerAgeStep } from './steps/player-age.js';
-import { PlayerGenderStep } from './steps/player-gender.js';
 import { PreferredAgeStep } from './steps/preferred-age.js';
 import { PreferredGenderStep } from './steps/preferred-gender.js';
 import { WeekDayStep } from './steps/week-day.js';
+import { TennisText } from './tennis-text.js';
 
-const log = LoggerFactory.bot('racket-profile-setup');
+const log = LoggerFactory.bot('tennis-profile-setup');
+
+function isMultiSportOnboardingSession(): boolean {
+  const raw = sessionManager.getCurrentSession()?.data?.onboardingChosenSports;
+  return Array.isArray(raw) && raw.length > 0;
+}
 
 const playLevelStep = new PlayLevelStep();
-const playerAgeStep = new PlayerAgeStep();
-const playerGenderStep = new PlayerGenderStep();
 const weekDayStep = new WeekDayStep();
 const dayTimeStep = new DayTimeStep();
 const preferredAgeStep = new PreferredAgeStep();
 const preferredGenderStep = new PreferredGenderStep();
 
+/** Порядок: уровень → предпочтения партнёров (пол, возраст) → дни → время. Пол/возраст игрока — из `User` при сохранении. */
 export const profileSetupStepFactory = new StepFactory<StepKey, ProfileSetupActions, ProfileSetupWizardContext>({
   steps: [
     {
@@ -50,19 +51,19 @@ export const profileSetupStepFactory = new StepFactory<StepKey, ProfileSetupActi
       },
     },
     {
-      name: PlayerAgeService.playerAgeStepName,
+      name: PreferredGenderService.PreferredGenderStepName,
       step: {
-        execute: ctx => playerAgeStep.execute(ctx),
-        handleInput: (ctx, action: Extract<ProfileSetupActions, PlayerAgeAction>) =>
-          playerAgeStep.handleInput(ctx, action),
+        execute: ctx => preferredGenderStep.execute(ctx),
+        handleInput: (ctx, action: Extract<ProfileSetupActions, PreferredGenderAction>) =>
+          preferredGenderStep.handleInput(ctx, action),
       },
     },
     {
-      name: PlayerGenderService.playerGenderStepName,
+      name: PreferredAgeService.PreferredAgeStepName,
       step: {
-        execute: ctx => playerGenderStep.execute(ctx),
-        handleInput: (ctx, action: Extract<ProfileSetupActions, PlayerGenderAction>) =>
-          playerGenderStep.handleInput(ctx, action),
+        execute: ctx => preferredAgeStep.execute(ctx),
+        handleInput: (ctx, action: Extract<ProfileSetupActions, PreferredAgeAction>) =>
+          preferredAgeStep.handleInput(ctx, action),
       },
     },
     {
@@ -75,34 +76,24 @@ export const profileSetupStepFactory = new StepFactory<StepKey, ProfileSetupActi
     },
     {
       name: DayTimeService.DayTimeStepName,
+      beforeRewindToPrevious: ctx => {
+        const cursor = ctx.wizard.state.dayTimeCursorDay;
+        if (!cursor) return;
+        const times = ctx.wizard.state.dayTimes as Record<WeekDay, DayTime[]> | undefined;
+        if (times && Object.prototype.hasOwnProperty.call(times, cursor)) {
+          delete times[cursor];
+        }
+        ctx.wizard.state.dayTimeCursorDay = undefined;
+      },
       step: {
         execute: ctx => dayTimeStep.execute(ctx),
         handleInput: (ctx, action: Extract<ProfileSetupActions, DayTimeAction>) =>
           dayTimeStep.handleInput(ctx, action),
       },
     },
-    {
-      name: PreferredAgeService.PreferredAgeStepName,
-      step: {
-        execute: ctx => preferredAgeStep.execute(ctx),
-        handleInput: (ctx, action: Extract<ProfileSetupActions, PreferredAgeAction>) =>
-          preferredAgeStep.handleInput(ctx, action),
-      },
-    },
-    {
-      name: PreferredGenderService.PreferredGenderStepName,
-      step: {
-        execute: ctx => preferredGenderStep.execute(ctx),
-        handleInput: (ctx, action: Extract<ProfileSetupActions, PreferredGenderAction>) =>
-          preferredGenderStep.handleInput(ctx, action),
-      },
-    },
   ],
   defaultStep: PlayLevelService.playLevelStepName,
   finalizeFunction: async ctx => {
-    // Не вызывать answerCbQuery здесь: последний шаг wizard уже ответил на callback;
-    // повторный ответ даёт ошибку API, finalize прерывается и сцена не покидается.
-
     const telegramId = ctx.from?.id;
     if (telegramId === undefined) {
       log.warn('finalize', 'wizard finalize without from.id', {});
@@ -111,28 +102,58 @@ export const profileSetupStepFactory = new StepFactory<StepKey, ProfileSetupActi
 
     const s = ctx.wizard.state;
 
+    const callbackQueryIdForErrors = ctx.callbackQuery?.id;
+    const wasTennisOnboardingEditBeforePersist = Boolean(sessionManager.getCurrentSession()?.data?.onboardingEdit);
+
     try {
       await persistRacketProfileFromWizardState(telegramId, s);
     } catch (e) {
       const err = e as Error;
-      if (err.message === 'USER_NOT_FOUND') {
-        await ctx.reply('Пользователь не найден. Начни с /start.');
-        return;
+      const mapMsg = (): string => {
+        if (err.message === 'USER_NOT_FOUND') return TennisText.errUserNotFound;
+        if (err.message === 'INCOMPLETE_WIZARD_STATE') return TennisText.errIncompleteWizard;
+        if (err.message === 'INCOMPLETE_USER_DEMOGRAPHICS') return TennisText.errIncompleteDemographics;
+        log.error('finalize', 'failed to persist tennis profile', err, { telegramId });
+        return TennisText.errPersistFailed;
+      };
+      const msg = mapMsg();
+      try {
+        if (ctx.callbackQuery?.message && !ctx.callbackQuery.inline_message_id) {
+          await ctx.editMessageText(`❌ ${msg}`, { reply_markup: { inline_keyboard: [] } });
+        } else {
+          await ctx.reply(`❌ ${msg}`);
+        }
+      } catch {
+        await ctx.reply(`❌ ${msg}`);
       }
-      if (err.message === 'INCOMPLETE_WIZARD_STATE') {
-        await ctx.reply('Не хватает данных профиля. Пройди настройку ещё раз.');
-        return;
+      if (wasTennisOnboardingEditBeforePersist && callbackQueryIdForErrors) {
+        const toast =
+          msg.length > TennisText.cbToastMaxLen
+            ? `${msg.slice(0, TennisText.cbToastMaxLen - TennisText.cbToastTruncateSuffix.length)}${TennisText.cbToastTruncateSuffix}`
+            : msg;
+        await ctx.telegram.answerCbQuery(callbackQueryIdForErrors, toast).catch(() => {});
       }
-      log.error('finalize', 'failed to persist racket profile', err, { telegramId });
-      await ctx.reply('Не удалось сохранить профиль. Попробуй позже.');
       return;
     }
 
-    await ctx.editMessageText(buildRacketProfileSummaryMessage(s));
+    await ctx.editMessageText(await buildTennisProfileSummaryMessage(telegramId, s), {
+      reply_markup: { inline_keyboard: [] },
+    });
 
-    await ctx.reply(
-      'Отлично, профиль настроен! Теперь вы можете искать подходящие игры!',
-      Markup.keyboard(['Редактировать профиль', 'Искать игры']).resize(),
-    );
+    const callbackQueryId = ctx.callbackQuery?.id;
+    const wasTennisOnboardingEdit = Boolean(sessionManager.getCurrentSession()?.data?.onboardingEdit);
+
+    if (!isMultiSportOnboardingSession() && !wasTennisOnboardingEdit) {
+      await ctx.reply(TennisText.savedStandalone, {
+        reply_markup: { remove_keyboard: true },
+      });
+    }
+
+    const { invokeTennisProfileSaved } = await import('./profile-complete-bridge.js');
+    await invokeTennisProfileSaved(ctx);
+
+    if (wasTennisOnboardingEdit && callbackQueryId) {
+      await ctx.telegram.answerCbQuery(callbackQueryId, TennisText.savedEditToast).catch(() => {});
+    }
   },
 });

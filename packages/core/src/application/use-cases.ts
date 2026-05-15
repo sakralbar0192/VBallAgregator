@@ -407,12 +407,50 @@
     }
   }
 
-  export async function setUserActiveSport(userId: string, sport: 'volleyball' | 'racket'): Promise<{ ok: boolean }> {
+  export async function setUserActiveSport(userId: string, sport: 'volleyball' | 'tennis'): Promise<{ ok: boolean }> {
     InputValidator.validateRequired(userId, 'userId');
     const useCaseLogger = LoggerFactory.useCase('setUserActiveSport');
     const correlationId = `sport_${userId}_${Date.now()}`;
     useCaseLogger.info('setUserActiveSport', 'Обновление activeSport', { userId, sport }, { correlationId });
     return await userApplicationService.updateUserActiveSport({ userId, sport });
+  }
+
+  export async function setUserDemographics(
+    userId: string,
+    demographics: { gender?: string; ageBand?: string },
+  ): Promise<{ ok: boolean }> {
+    InputValidator.validateRequired(userId, 'userId');
+    const useCaseLogger = LoggerFactory.useCase('setUserDemographics');
+    const correlationId = `demo_${userId}_${Date.now()}`;
+    useCaseLogger.info('setUserDemographics', 'Обновление демографии', { userId, ...demographics }, { correlationId });
+    return await userApplicationService.updateUserDemographics({ userId, ...demographics });
+  }
+
+  export async function upsertUserSportProfileRow(
+    userId: string,
+    sport: 'volleyball' | 'tennis',
+    volleyball?: {
+      volleyballSkillTag: string | null;
+      volleyballFormats: string | null;
+      wantsOrganizeVolleyball: boolean;
+    },
+  ): Promise<{ ok: boolean }> {
+    InputValidator.validateRequired(userId, 'userId');
+    const useCaseLogger = LoggerFactory.useCase('upsertUserSportProfileRow');
+    const correlationId = `usp_${userId}_${sport}_${Date.now()}`;
+    useCaseLogger.info('upsertUserSportProfileRow', 'Профиль по виду спорта', { userId, sport }, { correlationId });
+    return await userApplicationService.upsertUserSportProfileRow({ userId, sport, volleyball });
+  }
+
+  export async function setUserVolleyballOnboardingSummary(
+    userId: string,
+    levelTag: string | undefined,
+  ): Promise<{ ok: boolean }> {
+    InputValidator.validateRequired(userId, 'userId');
+    const useCaseLogger = LoggerFactory.useCase('setUserVolleyballOnboardingSummary');
+    const correlationId = `vb_sum_${userId}_${Date.now()}`;
+    useCaseLogger.info('setUserVolleyballOnboardingSummary', 'Волейбол: levelTag + activeSport', { userId, levelTag }, { correlationId });
+    return await userApplicationService.updateUserVolleyballOnboardingSummary({ userId, levelTag });
   }
 
   /**

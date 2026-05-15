@@ -2,7 +2,7 @@
 
 ## Обзор
 
-Руководство для разработчиков **VBallAgregator**: мульти-спорт Telegram-бот (волейбол, ракетки), домен игр и регистраций в `packages/core`, UI бота в `packages/bot-volley`, ракеточные сцены в `packages/bot-racket`. Точка входа процесса — [apps/server/index.ts](../../apps/server/index.ts).
+Руководство для разработчиков **VBallAgregator**: мульти-спорт Telegram-бот (волейбол, большой теннис), домен игр и регистраций в `packages/core`, UI бота в `packages/bot-volley`, теннисный мастер в пакете `packages/bot-racket`. Точка входа процесса — [apps/server/index.ts](../../apps/server/index.ts).
 
 **Каноничные обзоры:** [Архитектура реализации](../architecture/implementation-architecture.md) · [Продукт и возможности](../business/product-and-capabilities.md)
 
@@ -58,7 +58,7 @@ packages/
 └── bot-racket/
     └── src/
         ├── racket-scenes.ts
-        └── profile-setup/  # Wizard ракеточного профиля
+        └── profile-setup/  # Wizard профиля большого тенниса
 
 Корень репозитория: package.json, tsconfig.json, jest.config.js, docker-compose.yml
 ```
@@ -70,7 +70,7 @@ packages/
 | Use cases и домен | `packages/core/src/application`, `packages/core/src/domain` |
 | Prisma | `packages/core/prisma/schema.prisma` |
 | Регистрация команд и callback | `packages/bot-volley/src/bot/modules`, `.../handlers` |
-| Ракеточные сцены | `packages/bot-racket/src` |
+| Сцены и мастер тенниса | `packages/bot-racket/src` |
 
 ## Среда разработки
 
@@ -111,8 +111,11 @@ API_PORT=3001
 | `npm run test:integration` | узкий набор integration |
 | `npm run test:e2e` | e2e-проект |
 | `npm run test:ci` | CI-режим с `SKIP_INTEGRATION_TESTS` |
+| `npm run test:onboarding` | unit: `registration` + `profile-setup` (без integration) |
+| `npm run test:onboarding:integration` | integration: persist/prefill онбординга |
+| `npm run test:onboarding:e2e` | e2e: `onboarding-flows.test.ts` |
 
-Тесты и `jest.config` подхватывают и `packages/bot-racket/src/**/*.test.ts`.
+Тесты и `jest.config` подхватывают и `packages/bot-racket/src/**/*.test.ts`. После правок в `packages/bot-volley/src/bot/registration/` или `packages/bot-racket/src/profile-setup/` — `npm run test:onboarding`, перед PR с БД — `test:onboarding:integration` и `test:onboarding:e2e`.
 
 ## База данных
 
@@ -122,7 +125,8 @@ API_PORT=3001
 
 - Сборка бота: [packages/bot-volley/src/bot/create-bot.ts](../../packages/bot-volley/src/bot/create-bot.ts) — `session`, `Stage`, модули из `BotModuleRegistry`.
 - Новые команды: регистрация в соответствующем модуле в `packages/bot-volley/src/bot/modules/`.
-- Ракеточный wizard: [packages/bot-racket/src/profile-setup/](../../packages/bot-racket/src/profile-setup/) — при изменении шагов проверять вызов **`next()`** для не-callback апдейтов в `WizardScene` (см. [implementation-architecture.md](../architecture/implementation-architecture.md)).
+- Теннисный wizard: [packages/bot-racket/src/profile-setup/](../../packages/bot-racket/src/profile-setup/) — тексты/callback в `tennis-text.ts` / `tennis-callbacks.ts`; при изменении шагов проверять вызов **`next()`** для не-callback апдейтов в `WizardScene`.
+- Онбординг: [packages/bot-volley/src/bot/registration/](../../packages/bot-volley/src/bot/registration/) — callback и строки в `onboarding-callbacks.ts` / `onboarding-text.ts`; логика в `*-controller.ts`, не в фасаде `onboarding-handlers.ts`.
 
 Список модулей и паттерны — [modules.md](../architecture/modules.md).
 

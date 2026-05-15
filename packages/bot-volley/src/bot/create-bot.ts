@@ -40,6 +40,9 @@ export async function createBot(options?: CreateBotOptions): Promise<Telegraf> {
   const stage = new Scenes.Stage([...getRacketScenes()]);
   bot.use(stage.middleware() as never);
 
+  const { OnboardingHandlers } = await import('./registration/onboarding-handlers.js');
+  OnboardingHandlers.registerTennisBridge();
+
   const registry = new BotModuleRegistry();
   registry.registerModule(new RegistrationModule());
   registry.registerModule(new GameManagementModule());

@@ -1,6 +1,6 @@
 # Техническая документация: Основные пользовательские сценарии VBallAgregator
 
-> **Сводка продуктового scope:** что сейчас поддерживается для волейбола и ракеток — в [product-and-capabilities.md](product-and-capabilities.md).
+> **Сводка продуктового scope:** волейбол и большой теннис — в [product-and-capabilities.md](product-and-capabilities.md).
 
 > **Цель документа:** Разделить код на смысловые блоки для упрощения анализа и создания технической документации
 
@@ -24,8 +24,10 @@ src/bot/
 ├── bot.ts                    # Главная конфигурация бота
 ├── registration/             # Регистрационные сценарии
 │   ├── registration-handler.ts
-│   ├── level-selection-handler.ts
-│   └── role-selection-handler.ts
+│   ├── onboarding-flow-controller.ts
+│   ├── sports-picker-controller.ts
+│   ├── volleyball-wizard-controller.ts
+│   └── onboarding-handlers.ts (фасад)
 ├── game-management/          # Управление играми
 │   └── game-management-handler.ts
 ├── payments/                 # Обработка платежей
@@ -82,44 +84,42 @@ src/infrastructure/
 
 ## 📝 Регистрационные сценарии
 
-### 🎯 Сценарий 1: Первичная регистрация пользователя
+### 🎯 Сценарий 1: Первичная регистрация и профили по видам спорта
 
-#### Пользовательский поток:
+#### Пользовательский поток (новый пользователь):
 ```
-Пользователь → /start → Выбор роли → [Игрок → Выбор уровня → Выбор организаторов] → [Организатор → Профиль] → Готов
+/start → мультивыбор видов спорта → пол и возраст (один раз) → [волейбол: форматы, уровень, дни/время, намерение организовать, организаторы] → [теннис: мастер tennis-profile] → финал (при флаге волейбола — создание Organizer) → готово
 ```
 
-#### Команды и обработчики:
-| Этап | Команда/Действие | Обработчик | Файл |
-|------|------------------|------------|------|
-| Инициализация | `/start` | `RegistrationHandler.handleStart` | [`src/bot/registration/registration-handler.ts:18`](src/bot/registration/registration-handler.ts:18) |
-| Выбор роли | `role_player` | `LevelSelectionHandler.handleRolePlayer` | [`src/bot/registration/level-selection-handler.ts:18`](src/bot/registration/level-selection-handler.ts:18) |
-| Выбор роли | `role_organizer` | `RegistrationHandler.handleRoleOrganizer` | [`src/bot/registration/registration-handler.ts:45`](src/bot/registration/registration-handler.ts:45) |
-| Выбор уровня | `level_*` | `LevelSelectionHandler.handleLevelSelection` | [`src/bot/registration/level-selection-handler.ts:45`](src/bot/registration/level-selection-handler.ts:45) |
-| Выбор организаторов | `select_organizers_registration` | `OrganizerSelectionHandler.handleSelectOrganizersRegistration` | [`src/bot/settings/organizer-selection-handler.ts:25`](src/bot/settings/organizer-selection-handler.ts:25) |
-| Завершение | `finish_registration` | `LevelSelectionHandler.handleFinishRegistration` | [`src/bot/registration/level-selection-handler.ts:85`](src/bot/registration/level-selection-handler.ts:85) |
+#### `/start` для пользователя с уже созданными профилями:
+- **Все виды из каталога настроены** — выбор «изменить волейбол / изменить теннис» (один вид за раз, подсказки текущих значений).
+- **Не все виды** — «редактировать» или «добавить вид спорта».
+
+#### Ключевые обработчики (актуальные пути в монорепозитории):
+| Этап | Обработчик | Файл |
+|------|-------------|------|
+| `/start` и ветвление | `OnboardingFlowController.handleStart` | `packages/bot-volley/src/bot/registration/onboarding-flow-controller.ts` |
+| Мультивыбор, демография | `SportsPickerController` | `packages/bot-volley/src/bot/registration/sports-picker-controller.ts` |
+| Волейбольный мастер | `VolleyballWizardController` | `packages/bot-volley/src/bot/registration/volleyball-wizard-controller.ts` |
+| Фасад для модуля | `OnboardingHandlers` | `packages/bot-volley/src/bot/registration/onboarding-handlers.ts` |
+| Мастер тенниса | `WizardScene` `tennis-profile` | `packages/bot-racket/src/profile-setup/profile-setup-scene.ts` |
+| Выбор организаторов | `OrganizerSelectionHandler` | `packages/bot-volley/src/bot/settings/organizer-selection-handler.ts` |
 
 #### Бизнес-операции (Use Cases):
 | Операция | Функция | Файл |
 |----------|---------|------|
-| Создание пользователя | `registerUser` | [`src/application/use-cases.ts:352`](src/application/use-cases.ts:352) |
-| Обновление уровня | `updateUserLevel` | [`src/application/use-cases.ts:391`](src/application/use-cases.ts:391) |
-| Регистрация организатора | `registerOrganizer` | [`src/application/use-cases.ts:419`](src/application/use-cases.ts:419) |
-| Привязка к организаторам | `selectOrganizers` | [`src/application/use-cases.ts:450`](src/application/use-cases.ts:450) |
+| Создание пользователя | `registerUser` | `packages/core/src/application/use-cases.ts` |
+| Активный вид спорта | `setUserActiveSport` | тот же файл |
+| Регистрация организатора | `registerOrganizer` | тот же файл |
+| Привязка к организаторам | `selectOrganizers` | тот же файл |
 
-#### Сообщения пользователю:
-```typescript
-// Приветствие и выбор роли
-'Привет! Я бот для организации волейбольных игр. Выбери свою роль:'
-[Игрок] [Организатор]
-
-// Выбор уровня для игрока
-'Ты выбрал роль игрока. Теперь оцени свой уровень:'
-[Новичок] [Любитель] [Опытный] [Профи]
-
-// Завершение регистрации
-'Отлично! Теперь ты можешь искать игры командой /games'
+#### Сообщения пользователю (пример):
+```text
+Привет! Я помогаю находить спортивные игры и события. Выбери один или несколько видов спорта.
+[Волейбол] [Большой теннис] [Далее]
 ```
+
+После завершения цепочки: «Регистрация завершена! Волейбольные игры: /games …»
 
 ### 🎯 Сценарий 2: Повторная регистрация (идемпотентность)
 

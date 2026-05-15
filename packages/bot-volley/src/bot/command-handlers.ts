@@ -768,7 +768,14 @@ export class CommandHandlers {
   static async handleSelectOrganizersSettings(ctx: Context): Promise<void> {
     const user = await prisma.user.findUnique({ where: { telegramId: ctx.from!.id } });
     if (!user) {
-      await ctx.reply('Сначала зарегистрируйся командой /start');
+      const id = ctx.callbackQuery?.id;
+      if (id) {
+        await ctx.telegram
+          .answerCbQuery(id, 'Сначала зарегистрируйся командой /start', { show_alert: true })
+          .catch(() => {});
+      } else {
+        await ctx.reply('Сначала зарегистрируйся командой /start');
+      }
       return;
     }
 
@@ -792,15 +799,31 @@ export class CommandHandlers {
       const buttons = await this.buildOrganizerSelectionButtons(user.id, telegramId);
 
       if (buttons.length === 0) {
-        await ctx.reply('Нет доступных организаторов');
+        const id = ctx.callbackQuery?.id;
+        if (id) {
+          await ctx.telegram.answerCbQuery(id, 'Нет доступных организаторов').catch(() => {});
+        } else {
+          await ctx.reply('Нет доступных организаторов');
+        }
         return;
       }
 
-      await ctx.reply('🔗 Выбери организаторов:', {
-        reply_markup: { inline_keyboard: buttons }
-      });
+      const text = '🔗 Выбери организаторов:';
+      const payload = { reply_markup: { inline_keyboard: buttons } };
+      if (ctx.callbackQuery?.message && !ctx.callbackQuery.inline_message_id) {
+        await ctx.editMessageText(text, payload);
+      } else {
+        await ctx.reply(text, payload);
+      }
     } catch (error: any) {
-      await ctx.reply('Не удалось загрузить список организаторов');
+      const id = ctx.callbackQuery?.id;
+      if (id) {
+        await ctx.telegram
+          .answerCbQuery(id, 'Не удалось загрузить список организаторов', { show_alert: true })
+          .catch(() => {});
+      } else {
+        await ctx.reply('Не удалось загрузить список организаторов');
+      }
     }
   }
 

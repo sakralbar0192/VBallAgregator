@@ -27,6 +27,7 @@ const collectCoverageFrom = [
   '!packages/**/*.test.ts',
   '!packages/**/*.spec.ts',
   '!packages/bot-volley/src/**/*.ts',
+  'packages/bot-volley/src/bot/registration/**/*.ts',
   'packages/bot-volley/src/bot/common/**/*.ts',
   '!packages/bot-volley/src/bot/common/base-handler.ts',
   '!packages/bot-volley/src/bot/common/common-handlers.ts',
@@ -50,21 +51,35 @@ export default {
   coverageProvider: 'v8',
   collectCoverageFrom,
   coverageReporters: ['text', 'lcov', 'html'],
-  coverageThreshold: {
-    global: {
-      branches: 73,
-      functions: 80,
-      lines: 80,
-      statements: 80,
-    },
-  },
   projects: [
+    {
+      displayName: 'onboarding-coverage',
+      ...shared,
+      testMatch: ['<rootDir>/packages/bot-volley/src/bot/registration/**/*.test.ts'],
+      setupFilesAfterEnv: ['<rootDir>/packages/core/src/tests/setup-unit-integration.ts'],
+      collectCoverageFrom: [
+        'packages/bot-volley/src/bot/registration/**/*.ts',
+        '!packages/bot-volley/src/bot/registration/**/*.test.ts',
+        '!packages/bot-volley/src/bot/registration/test-helpers/**',
+      ],
+      coverageDirectory: '<rootDir>/coverage-onboarding',
+      coverageThreshold: {
+        global: { branches: 0, functions: 0, lines: 0, statements: 0 },
+        './packages/bot-volley/src/bot/registration/': {
+          branches: 50,
+          functions: 55,
+          lines: 60,
+          statements: 60,
+        },
+      },
+    },
     {
       displayName: 'unit-integration',
       ...shared,
       testMatch: [
         '<rootDir>/packages/core/src/**/*.test.ts',
         '<rootDir>/packages/bot-racket/src/**/*.test.ts',
+        '<rootDir>/packages/bot-volley/src/**/*.test.ts',
       ],
       testPathIgnorePatterns: [
         '/node_modules/',
@@ -78,6 +93,14 @@ export default {
       ],
       setupFilesAfterEnv: ['<rootDir>/packages/core/src/tests/setup-unit-integration.ts'],
       coverageDirectory: '<rootDir>/coverage',
+      coverageThreshold: {
+        global: {
+          branches: 73,
+          functions: 80,
+          lines: 80,
+          statements: 80,
+        },
+      },
     },
     {
       displayName: 'e2e',

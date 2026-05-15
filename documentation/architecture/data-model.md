@@ -4,6 +4,18 @@
 
 ---
 
+## Мульти-спорт: пользователь, профили, подбор (Prisma)
+
+Каноническая схема: [`packages/core/prisma/schema.prisma`](../../packages/core/prisma/schema.prisma).
+
+- **`User`**: идентичность Telegram, **`gender`**, **`ageBand`** (диапазоны, один раз при онбординге), **`levelTag`** для волейбольного игрового потока, **`activeSport`** (`SportKind`: `volleyball` | `tennis`).
+- **`UserSportProfile`**: одна строка на пару **`(userId, sport)`** — атрибуты онбординга по виду (форматы волейбола, флаг «планирую организовать волейбольные игры», навык тенниса и т.д.).
+- **`MatchingProfile`** / **`MatchingSchedule`**: составной первичный ключ **`(userId, sport)`** — отдельные предпочтения подбора и расписание для каждого вида спорта.
+
+Границы bounded context (см. [ADR 0001](adr/0001-bounded-contexts-and-services.md)): демография и идентичность — контур **user**; предпочтения подбора и расписание — контур **matching** (после split — отдельная БД/outbox).
+
+---
+
 ## 1) Ubiquitous Language (глоссарий)
 
 * **Game** — мероприятие с `startsAt`, `venue`, `capacity`, `levelTag`, `priceText`, `status`.

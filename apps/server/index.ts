@@ -35,7 +35,16 @@ async function startApp() {
       },
       password: config.redis.password,
     });
-    await redisClient.connect();
+    try {
+      await redisClient.connect();
+    } catch (redisErr: unknown) {
+      const hostPort = `${config.redis.host}:${config.redis.port}`;
+      const hint =
+        `Redis недоступен (${hostPort}). Для локальной разработки: docker compose up -d redis\n` +
+        'Или установите REDIS_HOST / REDIS_PORT в .env на работающий инстанс.';
+      console.error(`\n[startup] ${hint}`);
+      throw redisErr instanceof Error ? new Error(`${hint}\n${redisErr.message}`, { cause: redisErr }) : redisErr;
+    }
 
     const bot = await createBot({ sessionRedis: redisClient as never });
 

@@ -56,31 +56,28 @@ describe('e2e organizer happy path', () => {
   });
 
   it('регистрация организатора и полный мастер создания игры', async () => {
-    await bot.handleUpdate(
-      buildPrivateMessageUpdate({
-        updateId: uid++,
-        chatId: ORG_TG,
-        userId: ORG_TG,
-        text: '/start',
-        firstName: 'Org',
-      })
-    );
-    let mid = getLastMessageIdForChat(outgoing, ORG_TG);
-
-    await bot.handleUpdate(
-      buildCallbackUpdate({
-        updateId: uid++,
-        chatId: ORG_TG,
-        userId: ORG_TG,
-        messageId: mid,
-        data: 'role_organizer',
-      })
-    );
-
-    const orgRow = await prisma.organizer.findFirst({
-      where: { user: { telegramId: BigInt(ORG_TG) } },
+    const orgUser = await prisma.user.create({
+      data: {
+        telegramId: BigInt(ORG_TG),
+        name: 'Org',
+        levelTag: 'novice',
+        gender: 'men',
+        ageBand: 'before-twenty',
+        activeSport: 'volleyball',
+      },
     });
-    expect(orgRow).not.toBeNull();
+    await prisma.organizer.create({
+      data: { userId: orgUser.id, title: 'Club' },
+    });
+    await prisma.userSportProfile.create({
+      data: {
+        userId: orgUser.id,
+        sport: 'volleyball',
+        volleyballSkillTag: 'novice',
+        volleyballFormats: 'classic',
+        wantsOrganizeVolleyball: false,
+      },
+    });
 
     await bot.handleUpdate(
       buildPrivateMessageUpdate({
@@ -90,7 +87,7 @@ describe('e2e organizer happy path', () => {
         text: '/newgame',
       })
     );
-    mid = getLastMessageIdForChat(outgoing, ORG_TG);
+    let mid = getLastMessageIdForChat(outgoing, ORG_TG);
 
     await bot.handleUpdate(
       buildCallbackUpdate({
@@ -200,33 +197,48 @@ describe('e2e organizer happy path', () => {
   });
 
   it('подтверждение игрока из pending и ответ на приглашение по callback', async () => {
-    await bot.handleUpdate(
-      buildPrivateMessageUpdate({
-        updateId: uid++,
-        chatId: ORG_TG,
-        userId: ORG_TG,
-        text: '/start',
-        firstName: 'Org',
-      })
-    );
-    await bot.handleUpdate(
-      buildCallbackUpdate({
-        updateId: uid++,
-        chatId: ORG_TG,
-        userId: ORG_TG,
-        messageId: getLastMessageIdForChat(outgoing, ORG_TG),
-        data: 'role_organizer',
-      })
-    );
-
-    const organizer = await prisma.organizer.findFirst({
-      where: { user: { telegramId: BigInt(ORG_TG) } },
+    const orgUser = await prisma.user.create({
+      data: {
+        telegramId: BigInt(ORG_TG),
+        name: 'Org',
+        levelTag: 'novice',
+        gender: 'men',
+        ageBand: 'before-twenty',
+        activeSport: 'volleyball',
+      },
     });
-    expect(organizer).not.toBeNull();
-    const org = organizer!;
+    const organizer = await prisma.organizer.create({
+      data: { userId: orgUser.id, title: 'Club' },
+    });
+    await prisma.userSportProfile.create({
+      data: {
+        userId: orgUser.id,
+        sport: 'volleyball',
+        volleyballSkillTag: 'novice',
+        volleyballFormats: 'classic',
+        wantsOrganizeVolleyball: false,
+      },
+    });
+    const org = organizer;
 
     const playerUser = await prisma.user.create({
-      data: { telegramId: BigInt(PLAYER_TG), name: 'Pl', levelTag: 'Новички' },
+      data: {
+        telegramId: BigInt(PLAYER_TG),
+        name: 'Pl',
+        levelTag: 'Новички',
+        gender: 'men',
+        ageBand: 'before-twenty',
+        activeSport: 'volleyball',
+      },
+    });
+    await prisma.userSportProfile.create({
+      data: {
+        userId: playerUser.id,
+        sport: 'volleyball',
+        volleyballSkillTag: 'novice',
+        volleyballFormats: 'classic',
+        wantsOrganizeVolleyball: false,
+      },
     });
     await prisma.playerOrganizer.create({
       data: {
@@ -282,36 +294,6 @@ describe('e2e organizer happy path', () => {
         response: 'ignored',
       },
     });
-
-    await bot.handleUpdate(
-      buildPrivateMessageUpdate({
-        updateId: uid++,
-        chatId: PLAYER_TG,
-        userId: PLAYER_TG,
-        text: '/start',
-        firstName: 'Pl',
-      })
-    );
-    let pmid = getLastMessageIdForChat(outgoing, PLAYER_TG);
-    await bot.handleUpdate(
-      buildCallbackUpdate({
-        updateId: uid++,
-        chatId: PLAYER_TG,
-        userId: PLAYER_TG,
-        messageId: pmid,
-        data: 'role_player',
-      })
-    );
-    pmid = getLastMessageIdForChat(outgoing, PLAYER_TG);
-    await bot.handleUpdate(
-      buildCallbackUpdate({
-        updateId: uid++,
-        chatId: PLAYER_TG,
-        userId: PLAYER_TG,
-        messageId: pmid,
-        data: 'level_novice',
-      })
-    );
 
     await bot.handleUpdate(
       buildCallbackUpdate({

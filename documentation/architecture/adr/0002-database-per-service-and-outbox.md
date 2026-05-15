@@ -43,6 +43,7 @@
 
 ## Реализация в репозитории
 
+- Онбординг и Telegram UI остаются в процессе gateway; владение данными следует ADR 0001: **`User`**, **`UserSportProfile`** — user-контур; **`MatchingProfile`**, **`MatchingSchedule`** — matching-контур (сейчас в одной Prisma-схеме, ключи по **`sport`** готовят split).
 - Outbox: `packages/core/prisma/schema.prisma` → `MessagingOutbox`.
 - Publisher: `apps/outbox-publisher/`.
 - Envelope: `packages/shared-kernel/`.

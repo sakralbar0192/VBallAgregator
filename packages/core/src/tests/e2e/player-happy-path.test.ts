@@ -9,26 +9,12 @@ import { clearDatabase } from '../test-db-helpers.js';
 import {
   patchTelegramApiClient,
   buildPrivateMessageUpdate,
-  buildCallbackUpdate,
   resetTelegramHarnessSeq,
   type ApiCallRecord,
 } from './telegram-harness.js';
 
 const ORG_TG = 920001;
 const PLAYER_TG = 920002;
-
-function getLastMessageIdForChat(store: { calls: ApiCallRecord[] }, chatId: number): number {
-  let mid = 1;
-  for (const c of store.calls) {
-    if (c.method === 'sendMessage' && Number(c.payload.chat_id) === chatId) {
-      mid = (c.response as { message_id: number }).message_id;
-    }
-    if (c.method === 'editMessageText' && Number(c.payload.chat_id) === chatId) {
-      mid = (c.response as { message_id: number }).message_id;
-    }
-  }
-  return mid;
-}
 
 describe('e2e player happy path', () => {
   const outgoing: { calls: ApiCallRecord[] } = { calls: [] };
@@ -54,6 +40,26 @@ describe('e2e player happy path', () => {
   });
 
   it('регистрация игрока, список игр, join, my, leave; оплата после старта игры', async () => {
+    const player = await prisma.user.create({
+      data: {
+        telegramId: BigInt(PLAYER_TG),
+        name: 'Player',
+        levelTag: 'novice',
+        gender: 'men',
+        ageBand: 'before-twenty',
+        activeSport: 'volleyball',
+      },
+    });
+    await prisma.userSportProfile.create({
+      data: {
+        userId: player.id,
+        sport: 'volleyball',
+        volleyballSkillTag: 'novice',
+        volleyballFormats: 'classic',
+        wantsOrganizeVolleyball: false,
+      },
+    });
+
     await bot.handleUpdate(
       buildPrivateMessageUpdate({
         updateId: uid++,
@@ -63,31 +69,6 @@ describe('e2e player happy path', () => {
         firstName: 'Player',
       })
     );
-    let mid = getLastMessageIdForChat(outgoing, PLAYER_TG);
-
-    await bot.handleUpdate(
-      buildCallbackUpdate({
-        updateId: uid++,
-        chatId: PLAYER_TG,
-        userId: PLAYER_TG,
-        messageId: mid,
-        data: 'role_player',
-      })
-    );
-    mid = getLastMessageIdForChat(outgoing, PLAYER_TG);
-
-    await bot.handleUpdate(
-      buildCallbackUpdate({
-        updateId: uid++,
-        chatId: PLAYER_TG,
-        userId: PLAYER_TG,
-        messageId: mid,
-        data: 'level_novice',
-      })
-    );
-
-    const player = await prisma.user.findUnique({ where: { telegramId: BigInt(PLAYER_TG) } });
-    expect(player?.levelTag).toBeTruthy();
 
     const orgUser = await prisma.user.create({
       data: { telegramId: BigInt(ORG_TG), name: 'Org E2E' },

@@ -95,54 +95,43 @@ packages/bot-racket/src/
 
 ### Пакет `packages/bot-racket`
 
-Ракеточные Telegraf-сцены живут в отдельном пакете (импорт из `bot-volley`, например `getRacketScenes()` в `create-bot.ts`). Мастер профиля для подбора: `packages/bot-racket/src/profile-setup/` (фабрика шагов, шаги, сервисы, `createRacketProfileWizardScene()`), сцена с id **`racket-profile`** (вход из `RegistrationHandler.handleSportRacket` и reply-клавиатуры «Настроить профиль» / «Редактировать профиль» при `activeSport === racket`).
+Мастер профиля для **большого тенниса**: `packages/bot-racket/src/profile-setup/`, сцена **`tennis-profile`** (`TENNIS_SCENE_ID`). Тексты и callback — `tennis-text.ts`, `tennis-callbacks.ts`.
+
+Мультиспорт-онбординг в `packages/bot-volley/src/bot/registration/`:
+
+| Файл | Назначение |
+|------|------------|
+| `onboarding-handlers.ts` | Публичный фасад для `RegistrationModule` |
+| `onboarding-flow-controller.ts` | `/start`, очередь видов спорта, финал сессии |
+| `sports-picker-controller.ts` | Выбор видов, демография, partial add/edit |
+| `volleyball-wizard-controller.ts` | Мастер волейбола (форматы → уровень → дни → время → организатор) |
+| `volleyball-onboarding-state.ts` | Драфт и persist профиля волейбола |
+| `onboarding-callbacks.ts`, `onboarding-text.ts` | Callback_data и UI-строки |
+| `onboarding-keyboards.ts`, `volleyball-onboarding-keyboards.ts` | Inline-клавиатуры |
 
 ### RegistrationModule (Модуль регистрации)
 ```typescript
-// src/bot/modules/registration-module.ts
+// packages/bot-volley/src/bot/modules/registration-module.ts
 export class RegistrationModule implements IBotModule {
-  name = 'RegistrationModule';
-  
   async register(bot: Telegraf<Context>): Promise<void> {
-    // Инициализация пользователя
-    bot.start(RegistrationHandler.handleStart);
-    
-    // Выбор роли: игрок или организатор
-    bot.action('role_player', LevelSelectionHandler.handleRolePlayer);
-    bot.action('role_organizer', RegistrationHandler.handleRoleOrganizer);
-    
-    // Выбор уровня игры
-    bot.action(/^level_(.+)$/, async (ctx) => {
-      const level = CallbackDataParser.parseLevel(ctx.match[0]!);
-      if (level) {
-        await LevelSelectionHandler.handleLevelSelection(ctx, level);
-      }
-    });
-    
-    // Выбор организаторов при регистрации
-    bot.action('select_organizers_registration', 
-      OrganizerSelectionHandler.handleSelectOrganizersRegistration);
-    
-    // Завершение регистрации
-    bot.action('finish_registration', LevelSelectionHandler.handleFinishRegistration);
+    bot.start(RegistrationHandler.handleStart); // → OnboardingFlowController.handleStart
+
+    bot.action(OnbCallback.sportToggleVolleyball, OnboardingHandlers.handleToggleVolleyball);
+    bot.action(OnbCallback.sportToggleTennis, OnboardingHandlers.handleToggleTennis);
+    bot.action(OnbCallback.sportDone, OnboardingHandlers.handleSportsDone);
+    // демография onb_dg_*, волейбол onbVB_*, возврат onb_rf_* / onb_rp_*
+    bot.action(OnbCallback.selectOrganizersRegistration, OrganizerSelectionHandler.handleSelectOrganizersRegistration);
   }
 }
 ```
 
 **Функциональность:**
-- Инициализация новых пользователей через `/start`
-- Выбор роли (Игрок/Организатор) 
-- Выбор уровня игры (beginner/intermediate/advanced)
-- Выбор предпочтительных организаторов
-- Управление процессом регистрации
+- `/start`: новый пользователь (мультивыбор видов) или returning (редактирование / добавление вида)
+- Общая демография (пол, возраст) один раз
+- Волейбол: inline-мастер; теннис: сцена `tennis-profile`
+- Выбор организаторов при флаге «организую волейбол» (если в системе есть другие организаторы)
 
-**Команды:**
-- `/start` - Начало регистрации пользователя
-- `role_player` - Выбор роли игрока
-- `role_organizer` - Выбор роли организатора
-- `level_*` - Выбор уровня игры
-- `select_organizers_registration` - Выбор организаторов
-- `finish_registration` - Завершение регистрации
+**Основные callback-префиксы:** `onb_t_*` (виды спорта), `onb_dg_*` / `onb_da_*` (демография), `onbVB_*` (волейбол), `onb_rf_*` / `onb_rp_*` (returning)
 
 ### GameManagementModule (Модуль управления играми)
 ```typescript

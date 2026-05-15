@@ -28,6 +28,23 @@ export class StepFactory<
     await step.step.execute(ctx);
   }
 
+  /** Вернуться к предыдущему шагу мастера (по порядку регистрации шагов). */
+  async goBack(ctx: ContextType): Promise<'rewound' | 'at-first'> {
+    const ordered = Array.from(this.steps.keys()) as StepType[];
+    const cur = this.currentStep;
+    if (!cur) {
+      await this.execute(ctx, this.defaultStep);
+      return 'rewound';
+    }
+    const idx = ordered.indexOf(cur);
+    if (idx <= 0) return 'at-first';
+    const prev = ordered[idx - 1] as StepType;
+    const curDef = cur ? this.steps.get(cur) : undefined;
+    curDef?.beforeRewindToPrevious?.(ctx);
+    await this.execute(ctx, prev);
+    return 'rewound';
+  }
+
   async handle(ctx: ContextType, action: ActionType): Promise<StepType | null> {
     const stepName = this.getStepNameByAction(action);
     if (!stepName) return null;

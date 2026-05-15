@@ -83,4 +83,4 @@ components:
           nullable: true
         activeSport:
           type: string
-          enum: [volleyball, racket]
+          enum: [volleyball, tennis]

@@ -3,6 +3,7 @@ import { BaseStep } from '../base-step.js';
 import PlayLevelService from '../services/play-level.js';
 import type { ProfileSetupWizardContext as Context, PlayLevel, PlayLevelAction } from '../types.js';
 import turnDataIntoAction from '../utils/turn-data-into-action.js';
+import { TennisText } from '../tennis-text.js';
 
 export class PlayLevelStep extends BaseStep {
   override isFirstStep = true;
@@ -12,15 +13,14 @@ export class PlayLevelStep extends BaseStep {
       ctx.wizard.state.level = PlayLevelService.defaultLevel;
     }
 
-    await this.replyOrEdit(
-      ctx,
-      '🎾 Выберите ваш уровень игры',
-      Markup.inlineKeyboard(
-        PlayLevelService.playLevelEntries.map(([key, level]) => [
-          Markup.button.callback(level, turnDataIntoAction(key, PlayLevelService.playLevelStepName)),
-        ]),
+    const cur = ctx.wizard.state.level;
+    const rows = PlayLevelService.playLevelEntries.map(([key, level]) => [
+      Markup.button.callback(
+        `${cur === key ? '✅ ' : ''}${level}`,
+        turnDataIntoAction(key, PlayLevelService.playLevelStepName),
       ),
-    );
+    ]);
+    await this.replyOrEdit(ctx, TennisText.playLevel, Markup.inlineKeyboard(rows));
   }
 
   async handleInput(ctx: Context, action: PlayLevelAction) {
@@ -30,6 +30,6 @@ export class PlayLevelStep extends BaseStep {
       await ctx.answerCbQuery();
       return true;
     }
-    await ctx.answerCbQuery('Неподходящее значение для уровня!');
+    await ctx.answerCbQuery(TennisText.errInvalidLevel);
   }
 }

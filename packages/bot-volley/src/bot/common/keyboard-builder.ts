@@ -114,7 +114,7 @@ export class KeyboardBuilder {
   static createSportSelectionKeyboard(): InlineKeyboardButton[][] {
     return [
       [{ text: '🏐 Волейбол', callback_data: 'sport_volleyball' }],
-      [{ text: '🎾 Ракетки (теннис, падел и др.)', callback_data: 'sport_racket' }],
+      [{ text: '🎾 Большой теннис', callback_data: 'sport_tennis' }],
     ];
   }
 

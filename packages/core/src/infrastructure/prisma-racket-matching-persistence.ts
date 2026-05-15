@@ -10,9 +10,10 @@ export class PrismaRacketMatchingPersistence implements RacketMatchingProfilePer
 
   async upsertProfile(row: RacketMatchingProfileRow): Promise<void> {
     await this.db.matchingProfile.upsert({
-      where: { userId: row.userId },
+      where: { userId_sport: { userId: row.userId, sport: row.sport } },
       create: {
         userId: row.userId,
+        sport: row.sport,
         preferredGenders: row.preferredGenders,
         preferredAges: row.preferredAges,
         playLevel: row.playLevel,
@@ -37,9 +38,10 @@ export class PrismaRacketMatchingPersistence implements RacketMatchingProfilePer
 
   async upsertSchedule(row: RacketMatchingScheduleRow): Promise<void> {
     await this.db.matchingSchedule.upsert({
-      where: { userId: row.userId },
+      where: { userId_sport: { userId: row.userId, sport: row.sport } },
       create: {
         userId: row.userId,
+        sport: row.sport,
         monday: row.monday,
         tuesday: row.tuesday,
         wednesday: row.wednesday,

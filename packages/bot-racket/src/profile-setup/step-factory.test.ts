@@ -59,4 +59,36 @@ describe('StepFactory (racket profile-setup)', () => {
     await factory.execute(ctx, 'alpha');
     expect(alphaRuns).toBe(2);
   });
+
+  it('goBack rewinds to the previous step', async () => {
+    const ctx = {} as WizardContext;
+    const factory = new StepFactory<DemoStep, DemoAction, WizardContext>({
+      steps: [
+        {
+          name: 'alpha',
+          step: {
+            execute: async () => {},
+            handleInput: async () => true,
+          },
+        },
+        {
+          name: 'beta',
+          step: {
+            execute: async () => {},
+            handleInput: async () => false,
+          },
+        },
+      ],
+      defaultStep: 'alpha',
+      finalizeFunction: async () => {},
+    });
+
+    await factory.execute(ctx, 'alpha');
+    const afterGo = await factory.handle(ctx, 'alpha_go');
+    expect(afterGo).toBe('beta');
+    await factory.execute(ctx, 'beta');
+
+    expect(await factory.goBack(ctx)).toBe('rewound');
+    expect(await factory.goBack(ctx)).toBe('at-first');
+  });
 });
